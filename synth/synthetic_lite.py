@@ -157,16 +157,22 @@ def qa(
             continue
 
     # ---- JSONL emit ----
-    jsonl_lines = []
-    for qa_pair in qa_list:
-        jsonl_lines.append(json.dumps(qa_pair, ensure_ascii=False))
-    
-    jsonl_str = "\n".join(jsonl_lines) + "\n"
-
     if output:
-        Path(output).write_text(jsonl_str, "utf-8")
-        typer.echo(f"[info] Wrote {len(qa_list)} lines → {output}")
+        json_path = output.with_suffix(".json")
+        json_path.write_text(json.dumps(qa_list, ensure_ascii=False, indent=2), encoding="utf-8")
+        typer.echo(f"[info] Wrote {len(qa_list)} pairs to {json_path}")
+
+        # Convert to JSONL from the JSON file
+        data = json.loads(json_path.read_text(encoding="utf-8"))
+        jsonl_lines = [json.dumps(item, ensure_ascii=False) for item in data]
+        jsonl_str = "\n".join(jsonl_lines) + "\n"
+
+        output.write_text(jsonl_str, "utf-8")
+        typer.echo(f"[info] Wrote {len(data)} lines → {output}")
     else:
+        # For stdout, convert directly from memory
+        jsonl_lines = [json.dumps(p, ensure_ascii=False) for p in qa_list]
+        jsonl_str = "\n".join(jsonl_lines) + "\n"
         print(jsonl_str)
 
 ###############################################################################
