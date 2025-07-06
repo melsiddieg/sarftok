@@ -129,33 +129,28 @@ def qa(
         raw = llm.invoke(prompt.format(text=ck, format_instructions=parser.get_format_instructions())).content.strip()
         try:
             data = json.loads(raw)
-            if isinstance(data, dict):
-                data = [data]
+            if isinstance(data, dict) and 'question' in data and 'answer' in data:
+                # Single QA pair
+                qa_list.append(data)
             elif isinstance(data, list):
-                # Flatten nested lists if they exist
-                flattened = []
+                # List of QA pairs - validate each one
                 for item in data:
-                    if isinstance(item, list):
-                        flattened.extend(item)
-                    else:
-                        flattened.append(item)
-                data = flattened
+                    if isinstance(item, dict) and 'question' in item and 'answer' in item:
+                        qa_list.append(item)
         except json.JSONDecodeError:
-            data = [parser.parse(raw)]
-        qa_list.extend(data)
+            try:
+                # Fallback to parser
+                parsed = parser.parse(raw)
+                if isinstance(parsed, dict) and 'question' in parsed and 'answer' in parsed:
+                    qa_list.append(parsed)
+            except:
+                # Skip malformed data
+                continue
 
     # ---- JSONL emit ----
     jsonl_lines = []
     for qa_pair in qa_list:
-        # Ensure each QA pair is properly formatted as a single JSON object
-        if isinstance(qa_pair, dict) and 'question' in qa_pair and 'answer' in qa_pair:
-            jsonl_lines.append(json.dumps(qa_pair, ensure_ascii=False))
-        elif isinstance(qa_pair, dict):
-            # Handle case where qa_pair is a dict but missing required keys
-            jsonl_lines.append(json.dumps({"question": str(qa_pair.get('question', '')), "answer": str(qa_pair.get('answer', ''))}, ensure_ascii=False))
-        else:
-            # Handle case where qa_pair is not a dict (like a list)
-            jsonl_lines.append(json.dumps({"question": "", "answer": str(qa_pair)}, ensure_ascii=False))
+        jsonl_lines.append(json.dumps(qa_pair, ensure_ascii=False))
     
     jsonl_str = "\n".join(jsonl_lines) + "\n"
 
