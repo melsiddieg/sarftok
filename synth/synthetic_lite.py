@@ -144,9 +144,14 @@ def qa(
         try:
             # MODIFICATION: Directly parse the output as a list of QAPair objects
             parsed_obj = parser.parse(raw)
+
+            # The parser can return either a Pydantic model or a dict.
             if isinstance(parsed_obj, QAPairList):
-                # Convert Pydantic models to dictionaries before appending to qa_list
+                # It's a Pydantic model, convert to dicts.
                 qa_list.extend([p.model_dump() for p in parsed_obj.pairs])
+            elif isinstance(parsed_obj, dict):
+                # It's a dictionary, extract pairs.
+                qa_list.extend(parsed_obj.get("pairs", []))
             else:
                 typer.echo(f"[warning] Parser returned unexpected type or content: {type(parsed_obj)}", err=True)
                 typer.echo(f"Raw output: {raw}", err=True)
