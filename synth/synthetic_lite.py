@@ -121,7 +121,7 @@ def qa(
 ):
     if not Path(config).exists():
         # Try to resolve relative to project root (parent of script's dir)
-        proj_config = Path(__file__).parent.parent / config
+        proj_config = Path(__file__).parent / config
         if proj_config.exists():
             config = proj_config
         else:
