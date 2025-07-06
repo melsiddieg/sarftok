@@ -131,6 +131,15 @@ def qa(
             data = json.loads(raw)
             if isinstance(data, dict):
                 data = [data]
+            elif isinstance(data, list):
+                # Flatten nested lists if they exist
+                flattened = []
+                for item in data:
+                    if isinstance(item, list):
+                        flattened.extend(item)
+                    else:
+                        flattened.append(item)
+                data = flattened
         except json.JSONDecodeError:
             data = [parser.parse(raw)]
         qa_list.extend(data)
@@ -141,9 +150,12 @@ def qa(
         # Ensure each QA pair is properly formatted as a single JSON object
         if isinstance(qa_pair, dict) and 'question' in qa_pair and 'answer' in qa_pair:
             jsonl_lines.append(json.dumps(qa_pair, ensure_ascii=False))
-        else:
-            # Handle case where qa_pair might not be properly structured
+        elif isinstance(qa_pair, dict):
+            # Handle case where qa_pair is a dict but missing required keys
             jsonl_lines.append(json.dumps({"question": str(qa_pair.get('question', '')), "answer": str(qa_pair.get('answer', ''))}, ensure_ascii=False))
+        else:
+            # Handle case where qa_pair is not a dict (like a list)
+            jsonl_lines.append(json.dumps({"question": "", "answer": str(qa_pair)}, ensure_ascii=False))
     
     jsonl_str = "\n".join(jsonl_lines) + "\n"
 
