@@ -99,8 +99,13 @@ class QAPair(BaseModel):
     question: str
     answer: str
 
+
+class QAPairList(BaseModel):
+    pairs: List[QAPair] = Field(description="A list of question and answer pairs.")
+
+
 # MODIFICATION: Change parser to expect a List of QAPair objects
-parser = JsonOutputParser(pydantic_object=List[QAPair])
+parser = JsonOutputParser(pydantic_object=QAPairList)
 
 ###############################################################################
 # QA command
@@ -138,12 +143,12 @@ def qa(
         raw = llm.invoke(prompt.format(text=ck, format_instructions=parser.get_format_instructions())).content.strip()
         try:
             # MODIFICATION: Directly parse the output as a list of QAPair objects
-            parsed_pairs = parser.parse(raw)
-            if isinstance(parsed_pairs, list) and all(isinstance(p, QAPair) for p in parsed_pairs):
+            parsed_obj = parser.parse(raw)
+            if isinstance(parsed_obj, QAPairList):
                 # Convert Pydantic models to dictionaries before appending to qa_list
-                qa_list.extend([p.model_dump() for p in parsed_pairs])
+                qa_list.extend([p.model_dump() for p in parsed_obj.pairs])
             else:
-                typer.echo(f"[warning] Parser returned unexpected type or content: {type(parsed_pairs)}", err=True)
+                typer.echo(f"[warning] Parser returned unexpected type or content: {type(parsed_obj)}", err=True)
                 typer.echo(f"Raw output: {raw}", err=True)
         except Exception as e:
             # MODIFICATION: Catch any parsing errors and log them
