@@ -100,7 +100,7 @@ class QAPair(BaseModel):
     answer: str
 
 # MODIFICATION: Change parser to expect a List of QAPair objects
-parser = JsonOutputParser(pydantic_schema=List[QAPair])
+parser = JsonOutputParser(pydantic_object=List[QAPair])
 
 ###############################################################################
 # QA command
