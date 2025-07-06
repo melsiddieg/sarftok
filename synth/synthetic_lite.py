@@ -99,7 +99,8 @@ class QAPair(BaseModel):
     question: str
     answer: str
 
-parser = JsonOutputParser(pydantic_schema=QAPair)
+# MODIFICATION: Change parser to expect a List of QAPair objects
+parser = JsonOutputParser(pydantic_schema=List[QAPair])
 
 ###############################################################################
 # QA command
@@ -128,24 +129,19 @@ def qa(
     for ck in tqdm(parts, desc="qa"):
         raw = llm.invoke(prompt.format(text=ck, format_instructions=parser.get_format_instructions())).content.strip()
         try:
-            data = json.loads(raw)
-            if isinstance(data, dict) and 'question' in data and 'answer' in data:
-                # Single QA pair
-                qa_list.append(data)
-            elif isinstance(data, list):
-                # List of QA pairs - validate each one
-                for item in data:
-                    if isinstance(item, dict) and 'question' in item and 'answer' in item:
-                        qa_list.append(item)
-        except json.JSONDecodeError:
-            try:
-                # Fallback to parser
-                parsed = parser.parse(raw)
-                if isinstance(parsed, dict) and 'question' in parsed and 'answer' in parsed:
-                    qa_list.append(parsed)
-            except:
-                # Skip malformed data
-                continue
+            # MODIFICATION: Directly parse the output as a list of QAPair objects
+            parsed_pairs = parser.parse(raw)
+            if isinstance(parsed_pairs, list) and all(isinstance(p, QAPair) for p in parsed_pairs):
+                # Convert Pydantic models to dictionaries before appending to qa_list
+                qa_list.extend([p.model_dump() for p in parsed_pairs])
+            else:
+                typer.echo(f"[warning] Parser returned unexpected type or content: {type(parsed_pairs)}", err=True)
+                typer.echo(f"Raw output: {raw}", err=True)
+        except Exception as e:
+            # MODIFICATION: Catch any parsing errors and log them
+            typer.echo(f"[warning] Failed to parse LLM output for chunk: {e}", err=True)
+            typer.echo(f"Raw output: {raw}", err=True)
+            continue
 
     # ---- JSONL emit ----
     jsonl_lines = []
@@ -166,4 +162,3 @@ def qa(
 
 if __name__ == "__main__":
     app()
-
