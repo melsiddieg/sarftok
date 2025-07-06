@@ -110,10 +110,18 @@ parser = JsonOutputParser(pydantic_object=List[QAPair])
 def qa(
     file: Path = typer.Argument(..., exists=True),
     output: Optional[Path] = typer.Option(None, "-o"),
-    config: Path = typer.Option("configs/config.yaml", "--config", exists=True),
+    config: Path = typer.Option("configs/config.yaml", "--config"),
     token_budget: Optional[int] = typer.Option(None),
     thinking_budget: Optional[int] = typer.Option(None),
 ):
+    if not Path(config).exists():
+        # Try to resolve relative to project root (parent of script's dir)
+        proj_config = Path(__file__).parent.parent / config
+        if proj_config.exists():
+            config = proj_config
+        else:
+            typer.echo(f"[error] Config file not found: {config}", err=True); raise typer.Exit(1)
+
     cfg = load_cfg(config)
     text = Path(file).read_text("utf-8")
     parts = chunk(text, cfg)
