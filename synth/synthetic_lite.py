@@ -136,7 +136,16 @@ def qa(
         qa_list.extend(data)
 
     # ---- JSONL emit ----
-    jsonl_str = "\n".join(json.dumps(obj, ensure_ascii=False) for obj in qa_list) + "\n"
+    jsonl_lines = []
+    for qa_pair in qa_list:
+        # Ensure each QA pair is properly formatted as a single JSON object
+        if isinstance(qa_pair, dict) and 'question' in qa_pair and 'answer' in qa_pair:
+            jsonl_lines.append(json.dumps(qa_pair, ensure_ascii=False))
+        else:
+            # Handle case where qa_pair might not be properly structured
+            jsonl_lines.append(json.dumps({"question": str(qa_pair.get('question', '')), "answer": str(qa_pair.get('answer', ''))}, ensure_ascii=False))
+    
+    jsonl_str = "\n".join(jsonl_lines) + "\n"
 
     if output:
         Path(output).write_text(jsonl_str, "utf-8")
