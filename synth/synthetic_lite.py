@@ -118,6 +118,7 @@ def qa(
     config: Path = typer.Option("configs/config.yaml", "--config"),
     token_budget: Optional[int] = typer.Option(None),
     thinking_budget: Optional[int] = typer.Option(None),
+    batch: bool = typer.Option(False, "--batch", help="Enable batch processing for LLM calls."),
 ):
     if not Path(config).exists():
         # Try to resolve relative to project root (parent of script's dir)
@@ -139,27 +140,54 @@ def qa(
     prompt = PromptTemplate.from_template(tmpl)
 
     qa_list = []
-    for ck in tqdm(parts, desc="qa"):
-        raw = llm.invoke(prompt.format(text=ck, format_instructions=parser.get_format_instructions())).content.strip()
-        try:
-            # MODIFICATION: Directly parse the output as a list of QAPair objects
-            parsed_obj = parser.parse(raw)
 
-            # The parser can return either a Pydantic model or a dict.
-            if isinstance(parsed_obj, QAPairList):
-                # It's a Pydantic model, convert to dicts.
-                qa_list.extend([p.model_dump() for p in parsed_obj.pairs])
-            elif isinstance(parsed_obj, dict):
-                # It's a dictionary, extract pairs.
-                qa_list.extend(parsed_obj.get("pairs", []))
-            else:
-                typer.echo(f"[warning] Parser returned unexpected type or content: {type(parsed_obj)}", err=True)
+    if batch:
+        typer.echo(f"[info] Batch processing {len(parts)} chunks...")
+        prompts_to_run = [prompt.format(text=ck, format_instructions=parser.get_format_instructions()) for ck in parts]
+        results = llm.batch(prompts_to_run)
+        for raw_result in tqdm(results, desc="parsing batch"):
+            raw = raw_result.content.strip()
+            try:
+                # MODIFICATION: Directly parse the output as a list of QAPair objects
+                parsed_obj = parser.parse(raw)
+
+                # The parser can return either a Pydantic model or a dict.
+                if isinstance(parsed_obj, QAPairList):
+                    # It's a Pydantic model, convert to dicts.
+                    qa_list.extend([p.model_dump() for p in parsed_obj.pairs])
+                elif isinstance(parsed_obj, dict):
+                    # It's a dictionary, extract pairs.
+                    qa_list.extend(parsed_obj.get("pairs", []))
+                else:
+                    typer.echo(f"[warning] Parser returned unexpected type or content: {type(parsed_obj)}", err=True)
+                    typer.echo(f"Raw output: {raw}", err=True)
+            except Exception as e:
+                # MODIFICATION: Catch any parsing errors and log them
+                typer.echo(f"[warning] Failed to parse LLM output for chunk: {e}", err=True)
                 typer.echo(f"Raw output: {raw}", err=True)
-        except Exception as e:
-            # MODIFICATION: Catch any parsing errors and log them
-            typer.echo(f"[warning] Failed to parse LLM output for chunk: {e}", err=True)
-            typer.echo(f"Raw output: {raw}", err=True)
-            continue
+                continue
+    else:
+        for ck in tqdm(parts, desc="qa"):
+            raw = llm.invoke(prompt.format(text=ck, format_instructions=parser.get_format_instructions())).content.strip()
+            try:
+                # MODIFICATION: Directly parse the output as a list of QAPair objects
+                parsed_obj = parser.parse(raw)
+
+                # The parser can return either a Pydantic model or a dict.
+                if isinstance(parsed_obj, QAPairList):
+                    # It's a Pydantic model, convert to dicts.
+                    qa_list.extend([p.model_dump() for p in parsed_obj.pairs])
+                elif isinstance(parsed_obj, dict):
+                    # It's a dictionary, extract pairs.
+                    qa_list.extend(parsed_obj.get("pairs", []))
+                else:
+                    typer.echo(f"[warning] Parser returned unexpected type or content: {type(parsed_obj)}", err=True)
+                    typer.echo(f"Raw output: {raw}", err=True)
+            except Exception as e:
+                # MODIFICATION: Catch any parsing errors and log them
+                typer.echo(f"[warning] Failed to parse LLM output for chunk: {e}", err=True)
+                typer.echo(f"Raw output: {raw}", err=True)
+                continue
 
     # ---- JSONL emit ----
     if output:
