@@ -4,6 +4,7 @@ import { METERS, parseMeterPattern } from './constants';
 import ArudBanner from './components/ArudCircle';
 import MeterDisplay from './components/MeterDisplay';
 import Controls from './components/Controls';
+import InfoCard from './components/InfoCard';
 import { Meter, Tafila } from './types';
 
 const App: React.FC = () => {
@@ -23,9 +24,11 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen w-full bg-gray-900 flex flex-col items-center justify-center p-4 overflow-hidden">
       <header className="text-center mb-6">
-        <h1 className="text-4xl md:text-5xl font-bold text-amber-400 font-amiri">مكتشف دوائر العروض</h1>
+        <h1 className="text-4xl md:text-5xl font-bold text-amber-400 font-amiri">مستكشف دوائر العروض</h1>
         <p className="text-gray-400 mt-2 text-lg">Interactive Arud Explorer</p>
       </header>
+
+      <InfoCard />
       
       <main className="flex flex-col items-center justify-center gap-8 w-full max-w-7xl">
         <div className="w-full flex items-center justify-center p-4 h-[160px]">
