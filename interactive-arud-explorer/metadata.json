@@ -1,0 +1,6 @@
+{
+  "name": "Interactive Arud Explorer",
+  "description": "An interactive web application that allows users to explore the circles of Arabic poetry meters (Arud), based on the system developed by Al-Khalil ibn Ahmad al-Farahidi. Rotate the wheel to discover different meters and their patterns.",
+  "requestFramePermissions": [],
+  "prompt": ""
+}
