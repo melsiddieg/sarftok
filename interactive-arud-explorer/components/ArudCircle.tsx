@@ -24,29 +24,40 @@ const ArudBanner: React.FC<ArudBannerProps> = ({ activeMeter, activePattern }) =
   const [currentOffset, setCurrentOffset] = useState(0);
   const [showGroupings, setShowGroupings] = useState(true);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [isDisintegrating, setIsDisintegrating] = useState(false);
+  const [isReforming, setIsReforming] = useState(false);
 
-  // Sliding window animation sequence
+  // Sliding window animation sequence with smooth transitions
   useEffect(() => {
     // Calculate the target offset for smooth sliding
     const targetOffset = normalizedOffset;
     
-    // Phase 1: Hide groupings immediately, start sliding
-    setShowGroupings(false);
+    // Phase 1: Start disintegration animation
+    setIsDisintegrating(true);
     setIsAnimating(true);
     
-    // Phase 2: Update position for smooth slide
-    const slideTimer = setTimeout(() => {
+    // Phase 2: After disintegration, hide groupings and start sliding
+    const hideTimer = setTimeout(() => {
+      setShowGroupings(false);
+      setIsDisintegrating(false);
       setCurrentOffset(targetOffset);
-    }, 50); // Small delay to ensure groupings hide first
+    }, 300); // Allow disintegration animation to complete
     
-    // Phase 3: After slide completes, show new groupings
-    const completeTimer = setTimeout(() => {
+    // Phase 3: After slide completes, start reformation
+    const reformTimer = setTimeout(() => {
       setShowGroupings(true);
+      setIsReforming(true);
+    }, 1100); // After slide animation completes
+    
+    // Phase 4: Complete reformation
+    const completeTimer = setTimeout(() => {
+      setIsReforming(false);
       setIsAnimating(false);
-    }, 1200);
+    }, 1600); // Allow reformation animation to complete
     
     return () => {
-      clearTimeout(slideTimer);
+      clearTimeout(hideTimer);
+      clearTimeout(reformTimer);
       clearTimeout(completeTimer);
     };
   }, [activeMeter.id]);
@@ -81,9 +92,17 @@ const ArudBanner: React.FC<ArudBannerProps> = ({ activeMeter, activePattern }) =
         ))}
       </div>
 
-      {/* Pattern groupings - appear only after reel stops */}
+      {/* Pattern groupings with disintegration/reformation animations */}
       {showGroupings && (
-        <div className="absolute top-0 w-full h-full transition-all duration-500 ease-out opacity-100">
+        <div 
+          className={`absolute top-0 w-full h-full transition-all duration-500 ease-out ${
+            isDisintegrating 
+              ? 'opacity-0 scale-95 blur-sm' 
+              : isReforming 
+                ? 'opacity-100 scale-100 blur-0 animate-pulse' 
+                : 'opacity-100 scale-100 blur-0'
+          }`}
+        >
           {(() => {
             let cursorInPatternUnits = 0;
             return activePattern.map((tafila, tafilaIndex) => {
@@ -96,18 +115,30 @@ const ArudBanner: React.FC<ArudBannerProps> = ({ activeMeter, activePattern }) =
               return (
                 <div
                   key={`group-${tafilaIndex}-${activeMeter.id}`}
-                  className="absolute top-0 h-full flex flex-col"
+                  className={`absolute top-0 h-full flex flex-col transition-all duration-700 ease-out ${
+                    isReforming 
+                      ? 'transform translate-y-0 opacity-100' 
+                      : ''
+                  }`}
                   style={{
                     right: `${rightPosition}px`,
                     width: `${width}px`,
+                    animationDelay: isReforming ? `${tafilaIndex * 150}ms` : '0ms',
                   }}
                 >
                   {/* Highlighting overlay for grouped atomic units - positioned to align with centered atomic units */}
                   <div 
-                    className="absolute w-full bg-amber-500/15 border-2 border-amber-400 rounded-lg"
+                    className={`absolute w-full bg-amber-500/15 border-2 border-amber-400 rounded-lg transition-all duration-500 ease-out ${
+                      isReforming 
+                        ? 'transform scale-100 opacity-100' 
+                        : isDisintegrating
+                          ? 'transform scale-75 opacity-0'
+                          : 'transform scale-100 opacity-100'
+                    }`}
                     style={{
                       top: '40px',
-                      height: '60px'
+                      height: '60px',
+                      animationDelay: isReforming ? `${tafilaIndex * 100}ms` : '0ms',
                     }}
                   />
 
@@ -120,7 +151,18 @@ const ArudBanner: React.FC<ArudBannerProps> = ({ activeMeter, activePattern }) =
                       height: '30px'
                     }}
                   >
-                    <span className="font-amiri text-amber-200 text-xl md:text-2xl tracking-wide font-bold">
+                    <span 
+                      className={`font-amiri text-amber-200 text-xl md:text-2xl tracking-wide font-bold transition-all duration-600 ease-out ${
+                        isReforming 
+                          ? 'transform translate-y-0 opacity-100 scale-100' 
+                          : isDisintegrating
+                            ? 'transform translate-y-2 opacity-0 scale-90'
+                            : 'transform translate-y-0 opacity-100 scale-100'
+                      }`}
+                      style={{
+                        animationDelay: isReforming ? `${tafilaIndex * 200 + 150}ms` : '0ms',
+                      }}
+                    >
                       {tafila.merged}
                     </span>
                   </div>
