@@ -26,11 +26,17 @@ const ArudBanner: React.FC<ArudBannerProps> = ({ activeMeter, activePattern }) =
   const [isAnimating, setIsAnimating] = useState(false);
   const [isDisintegrating, setIsDisintegrating] = useState(false);
   const [isReforming, setIsReforming] = useState(false);
+  const [visibleBoxes, setVisibleBoxes] = useState<boolean[]>(() => 
+    new Array(activePattern.length).fill(true)
+  );
 
   // Sliding window animation sequence with smooth transitions
   useEffect(() => {
     // Calculate the target offset for smooth sliding
     const targetOffset = normalizedOffset;
+    
+    // Reset visible boxes
+    setVisibleBoxes(new Array(activePattern.length).fill(false));
     
     // Phase 1: Start disintegration animation
     setIsDisintegrating(true);
@@ -47,20 +53,31 @@ const ArudBanner: React.FC<ArudBannerProps> = ({ activeMeter, activePattern }) =
     const reformTimer = setTimeout(() => {
       setShowGroupings(true);
       setIsReforming(true);
+      
+      // Start showing boxes from right to left (index 0 first in RTL)
+      activePattern.forEach((_, index) => {
+        setTimeout(() => {
+          setVisibleBoxes(prev => {
+            const newVisible = [...prev];
+            newVisible[index] = true;
+            return newVisible;
+          });
+        }, index * 150); // 150ms delay between each box
+      });
     }, 1100); // After slide animation completes
     
     // Phase 4: Complete reformation
     const completeTimer = setTimeout(() => {
       setIsReforming(false);
       setIsAnimating(false);
-    }, 1600); // Allow reformation animation to complete
+    }, 1600 + (activePattern.length * 150)); // Allow all boxes to appear
     
     return () => {
       clearTimeout(hideTimer);
       clearTimeout(reformTimer);
       clearTimeout(completeTimer);
     };
-  }, [activeMeter.id]);
+  }, [activeMeter.id, activePattern.length]);
 
   return (
     <div 
@@ -126,19 +143,24 @@ const ArudBanner: React.FC<ArudBannerProps> = ({ activeMeter, activePattern }) =
                     animationDelay: isReforming ? `${tafilaIndex * 150}ms` : '0ms',
                   }}
                 >
-                  {/* Highlighting overlay for grouped atomic units - positioned to align with centered atomic units */}
+                  {/* Highlighting overlay for grouped atomic units - right to left appearance */}
                   <div 
-                    className={`absolute w-full bg-amber-500/15 border-2 border-amber-400 rounded-lg transition-all duration-500 ease-out ${
-                      isReforming 
-                        ? 'transform scale-100 opacity-100' 
-                        : isDisintegrating
-                          ? 'transform scale-75 opacity-0'
-                          : 'transform scale-100 opacity-100'
+                    className={`absolute bg-amber-500/15 border-2 border-amber-400 rounded-lg transition-all duration-300 ease-out ${
+                      visibleBoxes[tafilaIndex] 
+                        ? 'opacity-100 scale-100' 
+                        : 'opacity-0 scale-75'
+                    } ${
+                      isDisintegrating
+                        ? 'opacity-0 scale-50'
+                        : ''
                     }`}
                     style={{
                       top: '40px',
                       height: '60px',
-                      animationDelay: isReforming ? `${tafilaIndex * 100}ms` : '0ms',
+                      left: '50%',
+                      width: `${width}px`,
+                      transform: 'translateX(-50%)',
+                      transformOrigin: 'center center',
                     }}
                   />
 
@@ -152,15 +174,17 @@ const ArudBanner: React.FC<ArudBannerProps> = ({ activeMeter, activePattern }) =
                     }}
                   >
                     <span 
-                      className={`font-amiri text-amber-200 text-xl md:text-2xl tracking-wide font-bold transition-all duration-600 ease-out ${
-                        isReforming 
-                          ? 'transform translate-y-0 opacity-100 scale-100' 
-                          : isDisintegrating
-                            ? 'transform translate-y-2 opacity-0 scale-90'
-                            : 'transform translate-y-0 opacity-100 scale-100'
+                      className={`font-amiri text-amber-200 text-xl md:text-2xl tracking-wide font-bold transition-all duration-300 ease-out ${
+                        visibleBoxes[tafilaIndex]
+                          ? 'opacity-100 scale-100 translate-y-0' 
+                          : 'opacity-0 scale-90 translate-y-2'
+                      } ${
+                        isDisintegrating
+                          ? 'opacity-0 scale-75 translate-y-1'
+                          : ''
                       }`}
                       style={{
-                        animationDelay: isReforming ? `${tafilaIndex * 200 + 150}ms` : '0ms',
+                        transitionDelay: visibleBoxes[tafilaIndex] ? '100ms' : '0ms',
                       }}
                     >
                       {tafila.merged}
