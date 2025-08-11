@@ -1,62 +1,113 @@
-import { Meter, Tafila } from './types';
+import { Meter, Tafila, Circle } from './types';
+import { ALL_CIRCLES, getCircleById } from './data/circles';
 
-// The fundamental, repeating sequence of syllabic units.
-// '//0' represents a watid majmu'
-// '/0' represents a sabab khafif
-export const ATOMIC_SEQUENCE = ['//0', '/0', '//0', '/0', '/0', '//0', '/0', '//0', '/0', '/0'];
+// Legacy ATOMIC_SEQUENCE for backward compatibility (Circle 1)
+export const ATOMIC_SEQUENCE = ['0//', '0/', '0//', '0/', '0/', '0//', '0/', '0//', '0/', '0/'];
 
-// Maps a sequence of atomic units to its corresponding poetic foot (tafila).
+// Comprehensive tafila mapping for all prosodic patterns across all circles
 export const TAFILA_MAP: Record<string, Tafila> = {
-  '//0,/0': { unmerged: 'فعو لن', merged: 'فعولن' },
-  '//0,/0,/0': { unmerged: 'مفا عي لن', merged: 'مفاعيلن' },
-  '/0,//0,/0': { unmerged: 'فا علا تن', merged: 'فاعلاتن' },
-  '/0,//0': { unmerged: 'فا علن', merged: 'فاعلن' },
-  '/0,/0,//0': { unmerged: 'مس تف علن', merged: 'مستفعلن' },
+  // Circle 1 (Mixed) tafila patterns
+  '0//,0/': { unmerged: 'فعو لن', merged: 'فعولن' },
+  '0//,0/,0/': { unmerged: 'مفا عي لن', merged: 'مفاعيلن' },
+  '0/,0//,0/': { unmerged: 'فا علا تن', merged: 'فاعلاتن' },
+  '0/,0//': { unmerged: 'فا علن', merged: 'فاعلن' },
+  '0/,0/,0//': { unmerged: 'مس تف علن', merged: 'مستفعلن' },
+  
+  // Circle 2 (Pure) tafila patterns
+  'c2:0///,0//': { unmerged: 'مت فا علن', merged: 'متفاعلن' },
+  'c2:0//,0///': { unmerged: 'مفا عل تن', merged: 'مفاعلتن' },
+  
+  // Circle 3 (Mujtathab) tafila patterns - corrected for RTL
+  'c3:0//,0/,0/': { unmerged: 'مَـفا عِـي لُـن', merged: 'مفاعيلن' },
+  'c3:0/,0//,0/': { unmerged: 'فا عِلا تُن', merged: 'فاعلاتن' },
+  
+  // Circle 4 (Accordant) tafila patterns  
+  'c4:0/,0//,0//': { unmerged: 'مف عو لات', merged: 'مفعولات' },
+  'c4:0//,0/,0/': { unmerged: 'مف تع لن', merged: 'مفتعلن' },
+  'c4:0/,0//,0/': { unmerged: 'مفا عي ل', merged: 'مفاعيل' },
+  'c4:0//,0/': { unmerged: 'مس تف ع', merged: 'مستفع' },
+  '0/': { unmerged: 'لن', merged: 'لن' },
+  
+  // Circle 5 (Consonant) tafila patterns - reuse Circle 1 patterns with fallbacks
 };
 
-// A utility function to parse the atomic sequence and generate the pattern for a given meter.
-export const parseMeterPattern = (meter: Meter): Tafila[] => {
+// Enhanced utility function to parse meters from their respective circles
+export const parseMeterPattern = (meter: Meter, circle?: Circle): Tafila[] => {
   const pattern: Tafila[] = [];
+  let atomicSequence: string[];
+  
+  // Get the appropriate atomic sequence for this meter's circle
+  if (circle) {
+    atomicSequence = circle.atomicSequence;
+  } else {
+    // Find the circle by meter's circleId
+    const meterCircle = getCircleById(meter.circleId);
+    atomicSequence = meterCircle?.atomicSequence || ATOMIC_SEQUENCE;
+  }
+  
+  // Special handling for Circle 3 (contracted) - force uniform tafila repetition
+  if (meter.circleId === 'circle3-contracted') {
+    let baseTafila: Tafila;
+    
+    // Determine the base tafila for each meter in circle 3
+    switch (meter.id) {
+      case 'al-hazaj':
+        baseTafila = { unmerged: 'مَـفا عِـي لُـن', merged: 'مفاعيلن' }; // //0,/0,/0 مفاعيلن
+        break;
+      case 'al-rajaz':
+        baseTafila = { unmerged: 'مُس تَف عِلُن', merged: 'مستفعلن' }; // //0,/0,/0 مستفعلن (RTL: 0// 0/ 0/)
+        break;
+      case 'al-ramal':
+        baseTafila = TAFILA_MAP['c3:0/,0//,0/']; // فاعلاتن
+        break;
+      default:
+        baseTafila = { unmerged: 'unknown', merged: 'unknown' };
+    }
+    
+    // Return 3 repetitions of the same tafila
+    return [baseTafila, baseTafila, baseTafila];
+  }
+  
   let cursor = meter.startOffset;
+  const circlePrefix = meter.circleId === 'circle1-mixed' ? '' : 
+                      meter.circleId === 'circle2-pure' ? 'c2:' :
+                      meter.circleId === 'circle3-contracted' ? 'c3:' :
+                      meter.circleId === 'circle4-accordant' ? 'c4:' :
+                      meter.circleId === 'circle5-consonant' ? 'c5:' : '';
 
   for (const groupSize of meter.parsingInstructions) {
     const atomicGroup = [];
     for (let i = 0; i < groupSize; i++) {
-      atomicGroup.push(ATOMIC_SEQUENCE[(cursor + i) % ATOMIC_SEQUENCE.length]);
+      atomicGroup.push(atomicSequence[(cursor + i) % atomicSequence.length]);
     }
     const key = atomicGroup.join(',');
-    if (TAFILA_MAP[key]) {
+    const prefixedKey = circlePrefix + key;
+    
+    // Try circle-specific key first, then fallback to generic key
+    if (TAFILA_MAP[prefixedKey]) {
+      pattern.push(TAFILA_MAP[prefixedKey]);
+    } else if (TAFILA_MAP[key]) {
       pattern.push(TAFILA_MAP[key]);
+    } else {
+      // Fallback for unmapped patterns
+      pattern.push({ 
+        unmerged: atomicGroup.join(' '), 
+        merged: atomicGroup.join('') 
+      });
     }
     cursor += groupSize;
   }
   return pattern;
 };
 
+// Legacy function for backward compatibility
+export const parseMeterPatternLegacy = (meter: Meter): Tafila[] => {
+  return parseMeterPattern(meter);
+};
 
-export const METERS: Meter[] = [
-  {
-    id: 'al-tawil',
-    name: 'البحر الطويل',
-    startOffset: 0,
-    parsingInstructions: [2, 3, 2, 3], // [فعولن, مفاعيلن, فعولن, مفاعيلن]
-    patternTransliteration: 'faʿūlun mafāʿīlun faʿūlun mafāʿīlun',
-    description: 'One of the most common meters, often used for praise, satire, and themes of pride.',
-  },
-  {
-    id: 'al-madid',
-    name: 'البحر المديد',
-    startOffset: 1,
-    parsingInstructions: [3, 2, 3, 2], // [فاعلاتن, فاعلن, فاعلاتن, فاعلن]
-    patternTransliteration: 'fāʿilātun fāʿilun fāʿilātun fāʿilun',
-    description: 'A lighter meter, suitable for descriptive poetry and expressions of personal feeling. Often used in its shorter, 3-foot form.',
-  },
-  {
-    id: 'al-basit',
-    name: 'البحر البسيط',
-    startOffset: 3,
-    parsingInstructions: [3, 2, 3, 2], // [مستفعلن, فاعلن, مستفعلن, فاعلن]
-    patternTransliteration: 'mustafʿilun fāʿilun mustafʿilun fāʿilun',
-    description: 'A versatile and smooth-flowing meter, used for a wide range of narrative and descriptive topics.',
-  },
-];
+
+// Export circles and utility functions
+export { ALL_CIRCLES, getCircleById, getMeterById, getTotalMeterCount } from './data/circles';
+
+// Legacy METERS array for backward compatibility (Circle 1 meters only)
+export const METERS: Meter[] = ALL_CIRCLES[0]?.meters || [];
