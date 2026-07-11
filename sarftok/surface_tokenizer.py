@@ -11,10 +11,7 @@ range of surface tokens so the morphology embedding can be broadcast correctly.
 """
 from __future__ import annotations
 
-import io
-import os
 from pathlib import Path
-from typing import List, Optional, Tuple
 
 try:
     import sentencepiece as spm  # type: ignore
@@ -38,7 +35,7 @@ def train_surface_tokenizer(
     bos_id: int = 1,
     eos_id: int = 2,
     unk_id: int = 3,
-    user_defined_symbols: Optional[List[str]] = None,
+    user_defined_symbols: list[str] | None = None,
 ) -> str:
     """Train a SentencePiece model on *corpus_path* and save to *output_dir*.
 
@@ -154,7 +151,7 @@ class SurfaceTokenizer:
     # Encoding
     # ------------------------------------------------------------------
 
-    def encode(self, text: str) -> List[int]:
+    def encode(self, text: str) -> list[int]:
         """Encode *text* to a list of integer token IDs."""
         ids = self._sp.encode(text, out_type=int)
         if self.add_bos:
@@ -163,13 +160,13 @@ class SurfaceTokenizer:
             ids = [*ids, self.EOS_ID]
         return ids
 
-    def encode_pieces(self, text: str) -> List[str]:
+    def encode_pieces(self, text: str) -> list[str]:
         """Encode *text* to a list of string pieces."""
         return self._sp.encode(text, out_type=str)
 
     def encode_with_alignment(
-        self, words: List[str]
-    ) -> Tuple[List[int], List[Tuple[int, int]]]:
+        self, words: list[str]
+    ) -> tuple[list[int], list[tuple[int, int]]]:
         """Encode a pre-tokenised word list and return (ids, spans).
 
         Each word is encoded independently so that word boundaries are
@@ -188,8 +185,8 @@ class SurfaceTokenizer:
             ``spans[j] = (start, end)`` — half-open index into *ids* for
             word ``j`` (i.e. ``ids[start:end]``).
         """
-        ids: List[int] = []
-        spans: List[Tuple[int, int]] = []
+        ids: list[int] = []
+        spans: list[tuple[int, int]] = []
         offset = 0
 
         if self.add_bos:
@@ -215,7 +212,7 @@ class SurfaceTokenizer:
     # Decoding
     # ------------------------------------------------------------------
 
-    def decode(self, ids: List[int]) -> str:
+    def decode(self, ids: list[int]) -> str:
         """Decode a list of token IDs back to a string."""
         # Filter special tokens before decoding
         filtered = [
@@ -232,7 +229,7 @@ class SurfaceTokenizer:
         return self._sp.serialized_model_proto()
 
     @classmethod
-    def from_model_bytes(cls, data: bytes, **kwargs) -> "SurfaceTokenizer":
+    def from_model_bytes(cls, data: bytes, **kwargs) -> SurfaceTokenizer:
         """Load tokenizer from raw model bytes (e.g. from an HF asset)."""
         tmp = _write_tmp_model(data)
         return cls(tmp, **kwargs)

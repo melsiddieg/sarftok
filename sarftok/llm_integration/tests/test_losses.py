@@ -5,10 +5,9 @@ import pytest
 import torch
 
 from sarftok import MorphAnalysis
+from sarftok.llm_integration.losses import lm_loss, orthogonality_loss
 from sarftok.morph_encoder import MorphEncoder
 from sarftok.morph_vocab import MorphVocab
-
-from llm_integration.losses import lm_loss, orthogonality_loss
 
 
 @pytest.fixture

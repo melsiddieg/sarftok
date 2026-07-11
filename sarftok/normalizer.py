@@ -23,7 +23,6 @@ import re
 import unicodedata
 from typing import Literal
 
-
 # ---------------------------------------------------------------------------
 # Unicode character constants
 # ---------------------------------------------------------------------------

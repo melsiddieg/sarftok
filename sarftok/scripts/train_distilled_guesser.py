@@ -16,7 +16,7 @@ def main(argv=None):
     )
     parser.add_argument("--data", help="Training data directory.")
     parser.add_argument("--output", help="Output model directory.")
-    args = parser.parse_args(argv)
+    parser.parse_args(argv)
 
     print(
         "ERROR: train_distilled_guesser is a Phase-4 feature and has not been "

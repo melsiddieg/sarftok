@@ -16,9 +16,9 @@ Usage::
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
-from sarftok import MorphAnalysis, SentenceTokenization
+from sarftok import SentenceTokenization
 from sarftok.config import SarfTokConfig
 from sarftok.serialization import analysis_to_dict
 from sarftok.tokenizer_api import SarfTokTokenizer
@@ -46,7 +46,7 @@ class SarfTokHFTokenizer:
     # Core encode
     # ------------------------------------------------------------------
 
-    def encode_sentence(self, text: str) -> Dict[str, Any]:
+    def encode_sentence(self, text: str) -> dict[str, Any]:
         """Return a single-sentence encoding dict."""
         sent: SentenceTokenization = self._tokenizer.tokenize_sentence(text)
         return {
@@ -61,9 +61,9 @@ class SarfTokHFTokenizer:
 
     def __call__(
         self,
-        texts: Union[str, List[str]],
+        texts: str | list[str],
         **kwargs,
-    ) -> Dict[str, List[Any]]:
+    ) -> dict[str, list[Any]]:
         """Encode one or more texts. Returns a batch dict (list per field)."""
         if isinstance(texts, str):
             texts = [texts]
@@ -86,7 +86,7 @@ class SarfTokHFTokenizer:
             return self._tokenizer.surface_tokenizer.vocab_size
         return 0
 
-    def convert_ids_to_tokens(self, ids: List[int]) -> List[str]:
+    def convert_ids_to_tokens(self, ids: list[int]) -> list[str]:
         if self._tokenizer.surface_tokenizer is not None:
             return [self._tokenizer.surface_tokenizer.id_to_piece(i) for i in ids]
         return [str(i) for i in ids]
@@ -97,6 +97,6 @@ class SarfTokHFTokenizer:
         self.config.to_json(os.path.join(save_dir, "sarftok_config.json"))
 
     @classmethod
-    def from_pretrained(cls, save_dir: str) -> "SarfTokHFTokenizer":
+    def from_pretrained(cls, save_dir: str) -> SarfTokHFTokenizer:
         import os
         return cls(SarfTokConfig.from_json(os.path.join(save_dir, "sarftok_config.json")))

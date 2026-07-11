@@ -85,7 +85,7 @@ def main(argv=None):
     print(f"Preprocessing: {input_path} → {out_dir}")
     total = 0
     with JsonlShardWriter(out_dir, shard_size=args.shard_size) as writer:
-        with open(input_path, "r", encoding="utf-8") as f:
+        with open(input_path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:

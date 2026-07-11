@@ -16,7 +16,7 @@ High entropy (uncertain morphology) → smaller α → surface dominates.
 from __future__ import annotations
 
 import math
-from typing import List, Literal, Optional, Tuple
+from typing import Literal
 
 import torch
 import torch.nn as nn
@@ -24,12 +24,26 @@ import torch.nn as nn
 from sarftok import MorphAnalysis
 
 
-def _morphological_entropy(analyses: List[MorphAnalysis]) -> float:
-    """Compute Shannon entropy of a word's analysis distribution."""
+def _morphological_entropy(analyses: list[MorphAnalysis], normalize: bool = False) -> float:
+    """Compute Shannon entropy of a word's analysis distribution.
+
+    Parameters
+    ----------
+    analyses:
+        The word's top-k analyses (their ``prob`` fields form the distribution).
+    normalize:
+        If True, divide by ``ln(k_eff)`` (k_eff = number of analyses, clamped
+        to ≥ 2) so the result lies in ``[0, 1]`` and is comparable across
+        different ``top_k`` settings.  This keeps the gate's ``beta`` on a
+        stable scale regardless of how many analyses a word has.
+    """
     entropy = 0.0
     for a in analyses:
         p = max(a.prob, 1e-9)
         entropy -= p * math.log(p)
+    if normalize:
+        k_eff = max(len(analyses), 2)
+        entropy /= math.log(k_eff)
     return entropy
 
 
@@ -50,6 +64,9 @@ class ProbabilisticEmbedder(nn.Module):
         If True, scale αword = α₀ · exp(-β · H(p)).
     beta:
         Entropy decay rate.
+    entropy_normalize:
+        If True, normalise H by ``ln(k_eff)`` so it lies in ``[0, 1]`` and the
+        gate stays on a stable scale across different ``top_k`` values.
     """
 
     def __init__(
@@ -60,12 +77,14 @@ class ProbabilisticEmbedder(nn.Module):
         learnable_alpha: bool = False,
         entropy_gating: bool = True,
         beta: float = 1.0,
+        entropy_normalize: bool = True,
     ) -> None:
         super().__init__()
         self.hidden_dim = hidden_dim
         self.fusion_mode = fusion_mode
         self.entropy_gating = entropy_gating
         self.beta = beta
+        self.entropy_normalize = entropy_normalize
 
         if learnable_alpha:
             self.alpha = nn.Parameter(torch.tensor(alpha))
@@ -76,12 +95,12 @@ class ProbabilisticEmbedder(nn.Module):
     # Gating
     # ------------------------------------------------------------------
 
-    def _effective_alpha(self, analyses: Optional[List[MorphAnalysis]]) -> float:
+    def _effective_alpha(self, analyses: list[MorphAnalysis] | None) -> float:
         """Return the effective alpha for a word given its analyses."""
         base = float(self.alpha)
         if not self.entropy_gating or not analyses:
             return base
-        H = _morphological_entropy(analyses)
+        H = _morphological_entropy(analyses, normalize=self.entropy_normalize)
         return base * math.exp(-self.beta * H)
 
     # ------------------------------------------------------------------
@@ -92,8 +111,8 @@ class ProbabilisticEmbedder(nn.Module):
         self,
         surface_emb: torch.Tensor,
         morph_emb: torch.Tensor,
-        word_to_surface_spans: List[Tuple[int, int]],
-        analyses: Optional[List[List[MorphAnalysis]]] = None,
+        word_to_surface_spans: list[tuple[int, int]],
+        analyses: list[list[MorphAnalysis]] | None = None,
     ) -> torch.Tensor:
         """Fuse morphology into surface embeddings for one sentence.
 
@@ -143,8 +162,8 @@ class ProbabilisticEmbedder(nn.Module):
         self,
         surface_emb: torch.Tensor,
         morph_emb: torch.Tensor,
-        word_to_surface_spans: List[List[Tuple[int, int]]],
-        analyses_batch: Optional[List[List[List[MorphAnalysis]]]] = None,
+        word_to_surface_spans: list[list[tuple[int, int]]],
+        analyses_batch: list[list[list[MorphAnalysis]]] | None = None,
     ) -> torch.Tensor:
         """Fuse morphology for a batch.
 

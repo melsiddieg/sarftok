@@ -17,7 +17,6 @@ Design philosophy
 from __future__ import annotations
 
 import re
-from typing import List, Optional, Tuple
 
 from sarftok import MorphAnalysis
 from sarftok.morph_analyzer.interface import MorphAnalyzer
@@ -37,7 +36,7 @@ _DIACRITICS = re.compile(r"[\u064B-\u065F\u0670]")
 # (prefix string → canonical label)
 # ---------------------------------------------------------------------------
 
-_PROCLITICS: List[Tuple[str, str]] = [
+_PROCLITICS: list[tuple[str, str]] = [
     ("وَبِالْ", "wa+bi+al"),
     ("وَبِ", "wa+bi"),
     ("وَلِلْ", "wa+li+al"),
@@ -60,7 +59,7 @@ _PROCLITICS: List[Tuple[str, str]] = [
     ("ال", "al"),
 ]
 
-_PROCLITIC_LABELS: dict[str, List[str]] = {
+_PROCLITIC_LABELS: dict[str, list[str]] = {
     v: v.split("+") for v in set(v for _, v in _PROCLITICS)
 }
 
@@ -69,7 +68,7 @@ _PROCLITIC_LABELS: dict[str, List[str]] = {
 # (suffix string → canonical label)
 # ---------------------------------------------------------------------------
 
-_ENCLITICS: List[Tuple[str, str]] = [
+_ENCLITICS: list[tuple[str, str]] = [
     ("كُمَا", "kuma"),
     ("هُمَا", "huma"),
     ("كُمْ", "kum"),
@@ -139,7 +138,7 @@ def _consonantal_skeleton(word: str) -> str:
     return skel
 
 
-def _skeleton_to_root(skel: str) -> Optional[str]:
+def _skeleton_to_root(skel: str) -> str | None:
     """Guess a root from a consonantal skeleton.
 
     * 3-letter skeleton → direct root
@@ -183,18 +182,20 @@ class HeuristicMorphAnalyzer(MorphAnalyzer):
         top_k: int = 3,
         confidence_threshold: float = 0.05,
         temperature: float = 1.0,
+        score_type: str = "prob",
     ) -> None:
         super().__init__(
             top_k=top_k,
             confidence_threshold=confidence_threshold,
             temperature=temperature,
+            score_type=score_type,
         )
 
     # ------------------------------------------------------------------
     # Proclitic analysis
     # ------------------------------------------------------------------
 
-    def _strip_proclitics(self, word: str) -> Tuple[List[str], str]:
+    def _strip_proclitics(self, word: str) -> tuple[list[str], str]:
         """Return (proclitic_labels, stem) by stripping known prefixes.
 
         Both diacritised and undiacritised matching require at least 3
@@ -208,18 +209,20 @@ class HeuristicMorphAnalyzer(MorphAnalyzer):
                 remaining_nd = _strip_diacritics(remaining)
                 if len(remaining_nd) >= 3:
                     return label.split("+"), remaining
-        # Try undiacritised matching
+        # Try undiacritised matching.  Slice by the *undiacritised* prefix
+        # length: when the input carries no diacritics, using the diacritised
+        # prefix length would over-slice and drop a root consonant
+        # (e.g. الكتاب → تاب instead of كتاب).
         bare_nd = _strip_diacritics(word)
         for prefix, label in _PROCLITICS:
             p_nd = _strip_diacritics(prefix)
             if bare_nd.startswith(p_nd):
                 remaining_len = len(bare_nd) - len(p_nd)
                 if remaining_len >= 3:
-                    est_len = len(prefix)
-                    return label.split("+"), word[est_len:]
+                    return label.split("+"), word[len(p_nd):]
         return [], word
 
-    def _strip_enclitics(self, stem: str) -> Tuple[str, List[str]]:
+    def _strip_enclitics(self, stem: str) -> tuple[str, list[str]]:
         """Return (core, enclitic_labels) by stripping known suffixes."""
         for suffix, label in _ENCLITICS:
             if stem.endswith(suffix) and len(stem) > len(suffix) + 1:
@@ -236,7 +239,7 @@ class HeuristicMorphAnalyzer(MorphAnalyzer):
     # Pattern matching
     # ------------------------------------------------------------------
 
-    def _guess_pattern(self, core: str, skel: str) -> Optional[str]:
+    def _guess_pattern(self, core: str, skel: str) -> str | None:
         """Pick a plausible pattern based on skeleton length and word shape."""
         n = len(skel)
         bare = _strip_diacritics(core)
@@ -245,7 +248,7 @@ class HeuristicMorphAnalyzer(MorphAnalyzer):
         if n == 3:
             if re.match(r"^.\u064E.\u064E.$", core):
                 return "CaCaCa"
-            if re.match(r"^.\u064E.\u064A.$", core):
+            if re.match(r"^.\u064E.\u0650.$", core):  # \u0650 = kasra (the -i- vowel)
                 return "CaCiCa"
             if bare.startswith("\u0645"):
                 return "maCCaCa"
@@ -261,7 +264,7 @@ class HeuristicMorphAnalyzer(MorphAnalyzer):
     # Core analysis
     # ------------------------------------------------------------------
 
-    def _raw_analyze_word(self, word: str) -> List[MorphAnalysis]:
+    def _raw_analyze_word(self, word: str) -> list[MorphAnalysis]:
         if not word:
             return []
 
@@ -289,7 +292,7 @@ class HeuristicMorphAnalyzer(MorphAnalyzer):
             source="heuristic",
         )
 
-        analyses: List[MorphAnalysis] = [primary]
+        analyses: list[MorphAnalysis] = [primary]
 
         # Add a lower-confidence alternative if we have a root
         # (e.g. passive / verbal noun interpretation)

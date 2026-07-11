@@ -13,14 +13,12 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
 
 import torch
 import torch.nn.functional as F
 
 from sarftok import MorphAnalysis
 from sarftok.morph_encoder import MorphEncoder
-
 
 # ---------------------------------------------------------------------------
 # Helper: gather root and pattern embeddings from a corpus of analyses
@@ -29,11 +27,11 @@ from sarftok.morph_encoder import MorphEncoder
 
 def _gather_root_embeddings(
     encoder: MorphEncoder,
-    analyses_corpus: List[List[List[MorphAnalysis]]],
+    analyses_corpus: list[list[list[MorphAnalysis]]],
     max_items: int = 5_000,
-) -> Dict[str, List[torch.Tensor]]:
+) -> dict[str, list[torch.Tensor]]:
     """Return a dict mapping root → list of embedding tensors."""
-    root_embs: Dict[str, List[torch.Tensor]] = defaultdict(list)
+    root_embs: dict[str, list[torch.Tensor]] = defaultdict(list)
     count = 0
     for sent in analyses_corpus:
         for word_analyses in sent:
@@ -52,7 +50,7 @@ def _gather_root_embeddings(
 
 def root_clustering_purity(
     encoder: MorphEncoder,
-    analyses_corpus: List[List[List[MorphAnalysis]]],
+    analyses_corpus: list[list[list[MorphAnalysis]]],
     top_k_roots: int = 50,
 ) -> float:
     """Compute pseudo-purity of k-means clustering on root embeddings.
@@ -74,7 +72,7 @@ def root_clustering_purity(
         return float("nan")
 
     # Centroids
-    centroids: Dict[str, torch.Tensor] = {}
+    centroids: dict[str, torch.Tensor] = {}
     for root in selected:
         embs = torch.stack(root_embs[root])  # (N, D)
         centroids[root] = embs.mean(dim=0)
@@ -106,9 +104,9 @@ def root_clustering_purity(
 
 def cosine_similarity_report(
     encoder: MorphEncoder,
-    analyses_corpus: List[List[List[MorphAnalysis]]],
+    analyses_corpus: list[list[list[MorphAnalysis]]],
     n_pairs: int = 1_000,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Compute mean cosine similarity for same-root and cross-root pairs.
 
     Returns
@@ -123,8 +121,8 @@ def cosine_similarity_report(
     if len(roots) < 2:
         return {"same_root_mean_cos": float("nan"), "cross_root_mean_cos": float("nan"), "delta": float("nan")}
 
-    same_sims: List[float] = []
-    cross_sims: List[float] = []
+    same_sims: list[float] = []
+    cross_sims: list[float] = []
 
     for _ in range(n_pairs):
         # Same root pair
@@ -154,9 +152,9 @@ def cosine_similarity_report(
 
 def subspace_orthogonality(
     encoder: MorphEncoder,
-    analyses_corpus: List[List[List[MorphAnalysis]]],
+    analyses_corpus: list[list[list[MorphAnalysis]]],
     max_pairs: int = 500,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Measure mean cosine² between root and pattern embeddings.
 
     Low values indicate good orthogonality (more independent channels).
@@ -166,7 +164,7 @@ def subspace_orthogonality(
     dict with keys:
         mean_cos2, std_cos2, n_pairs
     """
-    cos2_values: List[float] = []
+    cos2_values: list[float] = []
     count = 0
 
     for sent in analyses_corpus:
@@ -201,7 +199,7 @@ def subspace_orthogonality(
 
 def tokens_per_word_stats(
     tokenization_results,
-) -> Dict[str, float]:
+) -> dict[str, float]:
     """Compute average surface tokens per Arabic word.
 
     Parameters

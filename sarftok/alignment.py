@@ -6,11 +6,9 @@ these helpers validate and manipulate the resulting span map.
 """
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
-
 
 def validate_spans(
-    spans: List[Tuple[int, int]],
+    spans: list[tuple[int, int]],
     total_ids: int,
 ) -> None:
     """Assert that spans are contiguous, non-overlapping, and in bounds.
@@ -45,15 +43,15 @@ def validate_spans(
         expected_start = e
 
 
-def span_lengths(spans: List[Tuple[int, int]]) -> List[int]:
+def span_lengths(spans: list[tuple[int, int]]) -> list[int]:
     """Return the number of surface tokens per word span."""
     return [e - s for s, e in spans]
 
 
 def build_word_mask(
-    span: Tuple[int, int],
+    span: tuple[int, int],
     seq_len: int,
-) -> List[bool]:
+) -> list[bool]:
     """Return a boolean mask of length *seq_len* that is True within *span*."""
     mask = [False] * seq_len
     for i in range(span[0], span[1]):
@@ -62,11 +60,11 @@ def build_word_mask(
 
 
 def broadcast_to_surface(
-    word_values: List[float],
-    spans: List[Tuple[int, int]],
+    word_values: list[float],
+    spans: list[tuple[int, int]],
     seq_len: int,
     default: float = 0.0,
-) -> List[float]:
+) -> list[float]:
     """Broadcast per-word scalar values to surface token positions.
 
     Parameters
@@ -97,12 +95,12 @@ def broadcast_to_surface(
     return result
 
 
-def first_piece_indices(spans: List[Tuple[int, int]]) -> List[Optional[int]]:
+def first_piece_indices(spans: list[tuple[int, int]]) -> list[int | None]:
     """Return the index of the first surface piece for each word span.
 
     Returns ``None`` for empty spans.
     """
-    indices: List[Optional[int]] = []
+    indices: list[int | None] = []
     for s, e in spans:
         indices.append(s if s < e else None)
     return indices

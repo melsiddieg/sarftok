@@ -12,8 +12,6 @@ with a helpful message.
 """
 from __future__ import annotations
 
-from typing import List, Optional
-
 from sarftok import MorphAnalysis
 from sarftok.morph_analyzer.interface import MorphAnalyzer
 
@@ -35,9 +33,9 @@ _PROCLITIC_KEYS = ["prc3", "prc2", "prc1", "prc0"]
 _ENCLITIC_KEYS = ["enc0"]
 
 
-def _extract_clitics(analysis: dict, keys: List[str]) -> List[str]:
+def _extract_clitics(analysis: dict, keys: list[str]) -> list[str]:
     """Extract non-null clitic values from a CAMeL analysis dict."""
-    result: List[str] = []
+    result: list[str] = []
     for k in keys:
         v = analysis.get(k, "")
         if v and v not in ("", "0", "na"):
@@ -45,25 +43,25 @@ def _extract_clitics(analysis: dict, keys: List[str]) -> List[str]:
     return result
 
 
-def _get_root(analysis: dict) -> Optional[str]:
+def _get_root(analysis: dict) -> str | None:
     root = analysis.get("root", "")
     if not root or root in ("-", "NOAN", "na"):
         return None
     return root
 
 
-def _get_pattern(analysis: dict) -> Optional[str]:
+def _get_pattern(analysis: dict) -> str | None:
     pattern = analysis.get("pattern", "")
     if not pattern or pattern in ("-", "NOAN", "na"):
         return None
     return pattern
 
 
-def _get_pos(analysis: dict) -> Optional[str]:
+def _get_pos(analysis: dict) -> str | None:
     return analysis.get("pos") or None
 
 
-def _get_lemma(analysis: dict) -> Optional[str]:
+def _get_lemma(analysis: dict) -> str | None:
     return analysis.get("lex") or analysis.get("lemma") or None
 
 
@@ -104,6 +102,7 @@ class CamelMorphAnalyzer(MorphAnalyzer):
         top_k: int = 3,
         confidence_threshold: float = 0.05,
         temperature: float = 1.0,
+        score_type: str = "prob",
     ) -> None:
         if not _CAMEL_AVAILABLE:
             raise ImportError(
@@ -115,17 +114,18 @@ class CamelMorphAnalyzer(MorphAnalyzer):
             top_k=top_k,
             confidence_threshold=confidence_threshold,
             temperature=temperature,
+            score_type=score_type,
         )
         db = MorphologyDB.builtin_db(db_name)
         self._analyzer = CamelAnalyzer(db)
 
-    def _raw_analyze_word(self, word: str) -> List[MorphAnalysis]:
+    def _raw_analyze_word(self, word: str) -> list[MorphAnalysis]:
         try:
             raw_analyses = self._analyzer.analyze(word)
         except Exception:  # noqa: BLE001
             return []
 
-        result: List[MorphAnalysis] = []
+        result: list[MorphAnalysis] = []
         n = len(raw_analyses)
         for idx, raw in enumerate(raw_analyses):
             d = dict(raw)

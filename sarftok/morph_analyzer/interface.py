@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import math
 from abc import ABC, abstractmethod
-from typing import List, Optional
 
 from sarftok import MorphAnalysis
 
@@ -32,7 +31,19 @@ class MorphAnalyzer(ABC):
         Analyses with probability below this value (after normalisation)
         are discarded.
     temperature:
-        Temperature for softmax rescaling when converting raw scores to probs.
+        Temperature for softmax rescaling.  Only applied when *score_type*
+        is ``"logit"`` (or when it is ``"prob"`` but a non-unit temperature
+        is explicitly requested).
+    score_type:
+        Interpretation of the ``prob`` field returned by
+        :meth:`_raw_analyze_word`:
+
+        ``"prob"``   — scores are (unnormalised) probabilities/weights and are
+                       L1-normalised (divided by their sum).  This preserves a
+                       backend's stated relative confidences, e.g. 0.7/0.3
+                       stays 0.7/0.3 rather than being flattened by a softmax.
+        ``"logit"``  — scores are logits and are converted with a temperature
+                       softmax.
     """
 
     def __init__(
@@ -40,17 +51,21 @@ class MorphAnalyzer(ABC):
         top_k: int = 3,
         confidence_threshold: float = 0.05,
         temperature: float = 1.0,
+        score_type: str = "prob",
     ) -> None:
         self.top_k = max(1, top_k)
         self.confidence_threshold = confidence_threshold
         self.temperature = max(temperature, 1e-6)
+        if score_type not in ("prob", "logit"):
+            raise ValueError(f"score_type must be 'prob' or 'logit', got {score_type!r}")
+        self.score_type = score_type
 
     # ------------------------------------------------------------------
     # Abstract method — subclasses implement this
     # ------------------------------------------------------------------
 
     @abstractmethod
-    def _raw_analyze_word(self, word: str) -> List[MorphAnalysis]:
+    def _raw_analyze_word(self, word: str) -> list[MorphAnalysis]:
         """Return raw analyses for a single *word*.
 
         Concrete implementations should set ``prob`` to any non-negative
@@ -66,8 +81,18 @@ class MorphAnalyzer(ABC):
     # Normalisation pipeline
     # ------------------------------------------------------------------
 
-    def _normalise_probs(self, analyses: List[MorphAnalysis]) -> List[MorphAnalysis]:
-        """Apply temperature, softmax-normalise, filter by threshold, re-normalise."""
+    def _normalise_probs(self, analyses: list[MorphAnalysis]) -> list[MorphAnalysis]:
+        """Normalise raw scores to a probability distribution.
+
+        ``score_type="prob"`` (default): L1-normalise so a backend's stated
+        confidences are preserved (0.7/0.3 stays 0.7/0.3).  A non-unit
+        temperature sharpens (T<1) or flattens (T>1) the categorical via
+        ``p_i^(1/T)``.
+
+        ``score_type="logit"``: temperature softmax over the raw scores.
+
+        Then filters by ``confidence_threshold`` and re-normalises.
+        """
         if not analyses:
             return analyses
 
@@ -81,18 +106,24 @@ class MorphAnalyzer(ABC):
                 a.prob = 1.0 / n
             return analyses
 
-        # Temperature scaling: apply to log-odds and re-softmax
-        if self.temperature != 1.0:
+        if self.score_type == "logit":
+            # Temperature softmax over logits
             scaled = [p / self.temperature for p in raw_probs]
+            max_s = max(scaled)
+            exps = [math.exp(s - max_s) for s in scaled]
+            sum_exps = sum(exps)
+            for a, e in zip(analyses, exps):
+                a.prob = e / sum_exps
         else:
-            scaled = list(raw_probs)
-
-        # Softmax
-        max_s = max(scaled)
-        exps = [math.exp(s - max_s) for s in scaled]
-        sum_exps = sum(exps)
-        for a, e in zip(analyses, exps):
-            a.prob = e / sum_exps
+            # L1-normalise (preserve relative confidences)
+            probs = [p / total for p in raw_probs]
+            if self.temperature != 1.0:
+                # Categorical temperature: sharpen/flatten then re-normalise
+                powered = [p ** (1.0 / self.temperature) for p in probs]
+                z = sum(powered) or 1.0
+                probs = [p / z for p in powered]
+            for a, p in zip(analyses, probs):
+                a.prob = p
 
         # Filter below threshold
         analyses = [a for a in analyses if a.prob >= self.confidence_threshold]
@@ -105,7 +136,7 @@ class MorphAnalyzer(ABC):
 
         return analyses
 
-    def _select_top_k(self, analyses: List[MorphAnalysis]) -> List[MorphAnalysis]:
+    def _select_top_k(self, analyses: list[MorphAnalysis]) -> list[MorphAnalysis]:
         """Sort descending by prob and keep top_k."""
         analyses.sort(key=lambda a: a.prob, reverse=True)
         return analyses[: self.top_k]
@@ -114,7 +145,7 @@ class MorphAnalyzer(ABC):
     # Public API
     # ------------------------------------------------------------------
 
-    def analyze_word(self, word: str) -> List[MorphAnalysis]:
+    def analyze_word(self, word: str) -> list[MorphAnalysis]:
         """Return top-k normalised analyses for a single *word*."""
         raw = self._raw_analyze_word(word)
         normed = self._normalise_probs(raw)
@@ -122,9 +153,9 @@ class MorphAnalyzer(ABC):
 
     def analyze_sentence(
         self,
-        words: List[str],
-        context: Optional[str] = None,  # noqa: ARG002 (future use for contextual analyzers)
-    ) -> List[List[MorphAnalysis]]:
+        words: list[str],
+        context: str | None = None,  # noqa: ARG002 (future use for contextual analyzers)
+    ) -> list[list[MorphAnalysis]]:
         """Return analyses for every word in *words*.
 
         Parameters

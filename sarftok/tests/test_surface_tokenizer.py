@@ -1,7 +1,6 @@
 """
 test_surface_tokenizer.py — tests for SurfaceTokenizer (skipped if no model).
 """
-import pytest
 
 # These tests are skipped when no trained SentencePiece model is available.
 # To run them, train a model first:
@@ -10,7 +9,7 @@ import pytest
 
 class TestSurfaceTokenizerImport:
     def test_module_importable(self):
-        from sarftok.surface_tokenizer import SurfaceTokenizer, train_surface_tokenizer
+        from sarftok.surface_tokenizer import SurfaceTokenizer
         assert SurfaceTokenizer is not None
 
     def test_train_function_importable(self):

@@ -8,11 +8,10 @@ nested morph analyses encoded as dicts (JSON-serializable).
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from pathlib import Path
-from typing import Dict, Generator, Iterator, List, Optional, Union
 
 from sarftok import MorphAnalysis, SentenceTokenization, WordMorphBundle
-
 
 # ---------------------------------------------------------------------------
 # Data model → dict / dict → data model
@@ -138,7 +137,7 @@ class JsonlShardWriter:
             self._current_count = 0
             self._open_shard()
 
-    def write_batch(self, sentences: List[SentenceTokenization]) -> None:
+    def write_batch(self, sentences: list[SentenceTokenization]) -> None:
         for s in sentences:
             self.write(s)
 
@@ -147,7 +146,7 @@ class JsonlShardWriter:
             self._file.close()
             self._file = None
 
-    def __enter__(self) -> "JsonlShardWriter":
+    def __enter__(self) -> JsonlShardWriter:
         return self
 
     def __exit__(self, *args) -> None:
@@ -161,7 +160,7 @@ def read_jsonl_shards(
     """Lazily iterate over all JSONL shards in *shard_dir*."""
     shard_dir = Path(shard_dir)
     for path in sorted(shard_dir.glob(pattern)):
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if line:
@@ -174,7 +173,7 @@ def read_jsonl_shards(
 
 
 def write_parquet_shard(
-    sentences: List[SentenceTokenization],
+    sentences: list[SentenceTokenization],
     path: str | Path,
 ) -> None:
     """Write a list of SentenceTokenization records to a Parquet file."""

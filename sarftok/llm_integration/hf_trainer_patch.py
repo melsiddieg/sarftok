@@ -8,9 +8,8 @@ Provides:
 """
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, Optional
-
-import torch
+from collections.abc import Callable
+from typing import Any
 
 
 def make_sarftok_compute_metrics(
@@ -20,9 +19,8 @@ def make_sarftok_compute_metrics(
 
     Currently computes perplexity from the LM loss.
     """
-    import math
 
-    def compute_metrics(eval_pred) -> Dict[str, float]:
+    def compute_metrics(eval_pred) -> dict[str, float]:
         # eval_pred is (logits, labels) from Trainer
         # If we return a dict from forward, Trainer will pass through the loss
         return {}  # Trainer accumulates loss automatically
@@ -72,7 +70,7 @@ class SarfTokTrainer:
         self.optimizer = optimizer
         self.scheduler = scheduler
 
-    def train_step(self, batch: Dict[str, Any]) -> Dict[str, float]:
+    def train_step(self, batch: dict[str, Any]) -> dict[str, float]:
         self.model.train()
         self.optimizer.zero_grad()
 

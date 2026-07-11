@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Create venv and install (CPU)
+        env:
+          # Use the CPU-only PyTorch wheels to keep CI fast and small.
+          PIP_EXTRA_INDEX_URL: https://download.pytorch.org/whl/cpu
+        run: |
+          uv venv --python ${{ matrix.python-version }}
+          uv pip install -e ".[hf,dev]"
+
+      - name: Ruff
+        run: uv run ruff check sarftok/
+
+      - name: Pytest
+        run: uv run pytest

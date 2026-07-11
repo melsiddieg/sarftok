@@ -8,11 +8,7 @@ Implemented losses
 """
 from __future__ import annotations
 
-import math
-from typing import List, Optional
-
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
 from sarftok import MorphAnalysis
@@ -47,7 +43,7 @@ def lm_loss(
 
 def orthogonality_loss(
     encoder: MorphEncoder,
-    analyses_batch: List[List[List[MorphAnalysis]]],
+    analyses_batch: list[list[list[MorphAnalysis]]],
     min_confidence: float = 0.5,
     lambda_: float = 0.01,
 ) -> torch.Tensor:
@@ -74,7 +70,7 @@ def orthogonality_loss(
     torch.Tensor  scalar
     """
     device = encoder.root_emb.weight.device
-    cosines_sq: List[torch.Tensor] = []
+    cosines_sq: list[torch.Tensor] = []
 
     for sent in analyses_batch:
         for word_analyses in sent:
@@ -102,7 +98,7 @@ def orthogonality_loss(
 
 def template_parallelism_loss(
     encoder: MorphEncoder,
-    pairs: List[tuple],
+    pairs: list[tuple],
     lambda_: float = 0.01,
 ) -> torch.Tensor:
     """Optional Phase-3 loss encouraging template-parallel vector differences.

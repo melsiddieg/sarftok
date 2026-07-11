@@ -11,10 +11,9 @@ Handles:
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import torch
-from torch.nn.utils.rnn import pad_sequence
 
 
 class SarfTokDataCollator:
@@ -34,7 +33,7 @@ class SarfTokDataCollator:
     def __init__(
         self,
         pad_token_id: int = 0,
-        max_length: Optional[int] = None,
+        max_length: int | None = None,
         label_pad_token_id: int = -100,
     ) -> None:
         self.pad_token_id = pad_token_id
@@ -42,8 +41,8 @@ class SarfTokDataCollator:
         self.label_pad_token_id = label_pad_token_id
 
     def __call__(
-        self, features: List[Dict[str, Any]]
-    ) -> Dict[str, Any]:
+        self, features: list[dict[str, Any]]
+    ) -> dict[str, Any]:
         """Collate a list of single-example encoding dicts.
 
         Input keys per example (from SarfTokHFTokenizer):
@@ -57,8 +56,6 @@ class SarfTokDataCollator:
             labels             : LongTensor (batch, seq_len)  — copy of input_ids
                                  with pad positions set to label_pad_token_id
         """
-        batch_size = len(features)
-
         # --------------- surface tokens ---------------
         all_ids = [torch.tensor(f["input_ids"], dtype=torch.long) for f in features]
         all_masks = [torch.tensor(f["attention_mask"], dtype=torch.long) for f in features]
@@ -83,11 +80,11 @@ class SarfTokDataCollator:
         labels[padded_masks == 0] = self.label_pad_token_id
 
         # --------------- morph metadata (kept as Python objects) ---------------
-        word_to_surface_spans: List[List[Tuple[int, int]]] = [
+        word_to_surface_spans: list[list[tuple[int, int]]] = [
             [tuple(sp) for sp in f.get("word_to_surface_spans", [])]
             for f in features
         ]
-        morph_analyses: List[List[List[dict]]] = [
+        morph_analyses: list[list[list[dict]]] = [
             f.get("morph_analyses", []) for f in features
         ]
 

@@ -7,9 +7,9 @@ can be reproduced by serialising a single config object.
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 
 @dataclass
@@ -34,7 +34,7 @@ class SarfTokConfig:
     surface_model_type: Literal["bpe", "unigram"] = "bpe"
     """SentencePiece model type."""
 
-    surface_model_path: Optional[str] = None
+    surface_model_path: str | None = None
     """Path to a pre-trained SentencePiece .model file."""
 
     # ------------------------------------------------------------------
@@ -55,7 +55,7 @@ class SarfTokConfig:
     # ------------------------------------------------------------------
     # Morphological vocabulary
     # ------------------------------------------------------------------
-    morph_vocab_path: Optional[str] = None
+    morph_vocab_path: str | None = None
     """Path to a pre-built morph vocabulary JSON file."""
 
     root_min_freq: int = 5
@@ -88,6 +88,9 @@ class SarfTokConfig:
     beta: float = 1.0
     """Entropy decay rate β in α_word = α₀ · exp(-β·H(p))."""
 
+    entropy_normalize: bool = True
+    """If True, normalise H by ln(k_eff) so β is stable across top_k values."""
+
     # ------------------------------------------------------------------
     # Training losses
     # ------------------------------------------------------------------
@@ -119,32 +122,32 @@ class SarfTokConfig:
         Path(path).write_text(json.dumps(self.to_dict(), indent=2, ensure_ascii=False))
 
     @classmethod
-    def from_dict(cls, d: dict) -> "SarfTokConfig":
+    def from_dict(cls, d: dict) -> SarfTokConfig:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
     @classmethod
-    def from_json(cls, path: str | Path) -> "SarfTokConfig":
+    def from_json(cls, path: str | Path) -> SarfTokConfig:
         return cls.from_dict(json.loads(Path(path).read_text()))
 
     # ------------------------------------------------------------------
     # Experiment presets
     # ------------------------------------------------------------------
     @classmethod
-    def baseline_a(cls, **kwargs) -> "SarfTokConfig":
+    def baseline_a(cls, **kwargs) -> SarfTokConfig:
         """Surface tokenizer only — no morphology."""
         return cls(alpha=0.0, entropy_gating=False, top_k=0, **kwargs)
 
     @classmethod
-    def baseline_b(cls, **kwargs) -> "SarfTokConfig":
+    def baseline_b(cls, **kwargs) -> SarfTokConfig:
         """Surface + deterministic top-1 morphology."""
         return cls(top_k=1, entropy_gating=False, **kwargs)
 
     @classmethod
-    def main_c(cls, **kwargs) -> "SarfTokConfig":
+    def main_c(cls, **kwargs) -> SarfTokConfig:
         """Surface + probabilistic top-3 morphology."""
         return cls(top_k=3, entropy_gating=True, **kwargs)
 
     @classmethod
-    def main_d(cls, **kwargs) -> "SarfTokConfig":
+    def main_d(cls, **kwargs) -> SarfTokConfig:
         """Surface + probabilistic top-3 + orthogonality loss."""
         return cls(top_k=3, entropy_gating=True, ortho_lambda=0.01, **kwargs)

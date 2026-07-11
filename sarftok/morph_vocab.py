@@ -18,8 +18,8 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Dict, Iterator, List, Optional, Tuple
 
 from sarftok import MorphAnalysis
 
@@ -57,7 +57,7 @@ _PATTERN_CLASSES = [
 ]
 
 # Proclitic ordering labels (match heuristics.py)
-_BUILTIN_PROCLITICS: List[Tuple[str, int]] = [
+_BUILTIN_PROCLITICS: list[tuple[str, int]] = [
     ("wa", 1), ("fa", 1), ("bi", 2), ("ka", 2), ("li", 2),
     ("al", 3), ("lil", 3), ("bill", 3), ("wal", 3), ("fal", 3),
     ("na", 4), ("ya", 4),
@@ -94,12 +94,12 @@ class MorphVocab:
         self.pattern_min_freq = pattern_min_freq
 
         # Token → integer ID maps
-        self.root_vocab: Dict[str, int] = {}
-        self.pattern_vocab: Dict[str, int] = {}
-        self.proclitic_vocab: Dict[str, int] = {}
-        self.enclitic_vocab: Dict[str, int] = {}
-        self.rootchar_vocab: Dict[str, int] = {}
-        self.patclass_vocab: Dict[str, int] = {}
+        self.root_vocab: dict[str, int] = {}
+        self.pattern_vocab: dict[str, int] = {}
+        self.proclitic_vocab: dict[str, int] = {}
+        self.enclitic_vocab: dict[str, int] = {}
+        self.rootchar_vocab: dict[str, int] = {}
+        self.patclass_vocab: dict[str, int] = {}
 
         self._init_builtins()
 
@@ -137,10 +137,10 @@ class MorphVocab:
     @classmethod
     def build_from_analyses(
         cls,
-        analyses_iter: Iterator[List[List[MorphAnalysis]]],
+        analyses_iter: Iterator[list[list[MorphAnalysis]]],
         root_min_freq: int = 5,
         pattern_min_freq: int = 3,
-    ) -> "MorphVocab":
+    ) -> MorphVocab:
         """Build vocabulary by counting root/pattern frequencies in corpus.
 
         Parameters
@@ -185,7 +185,7 @@ class MorphVocab:
     # Token ID lookup
     # ------------------------------------------------------------------
 
-    def root_id(self, root: str) -> Tuple[Optional[int], bool]:
+    def root_id(self, root: str) -> tuple[int | None, bool]:
         """Return (id, is_composite).
 
         is_composite=True  → ROOT_<root> token was found.
@@ -196,18 +196,18 @@ class MorphVocab:
             return self.root_vocab[tok], True
         return None, False
 
-    def root_char_ids(self, root: str) -> List[int]:
+    def root_char_ids(self, root: str) -> list[int]:
         """Return list of ROOTCHAR_ IDs, one per letter of root.
 
         Unknown characters fall back to ID 0 (first ROOTCHAR token).
         """
-        ids: List[int] = []
+        ids: list[int] = []
         for ch in root:
             tok = f"{_ROOTCHAR_PREFIX}{ch}"
             ids.append(self.rootchar_vocab.get(tok, 0))
         return ids
 
-    def pattern_id(self, pattern: Optional[str]) -> Tuple[int, str]:
+    def pattern_id(self, pattern: str | None) -> tuple[int, str]:
         """Return (id, token_used).
 
         Falls back to patclass, then PAT_UNKNOWN.
@@ -220,9 +220,9 @@ class MorphVocab:
         fallback = PAT_UNKNOWN
         return self.patclass_vocab.get(fallback, 0), fallback
 
-    def proclitic_ids(self, proclitics: List[str]) -> List[int]:
+    def proclitic_ids(self, proclitics: list[str]) -> list[int]:
         """Return IDs for a list of proclitic labels."""
-        ids: List[int] = []
+        ids: list[int] = []
         for order_or_label in proclitics:
             # Try ordered form first (e.g. PRO1_wa), then unordered
             found = False
@@ -238,9 +238,9 @@ class MorphVocab:
                 ids.append(self.proclitic_vocab.get(tok, 0))
         return ids
 
-    def enclitic_ids(self, enclitics: List[str]) -> List[int]:
+    def enclitic_ids(self, enclitics: list[str]) -> list[int]:
         """Return IDs for a list of enclitic labels."""
-        ids: List[int] = []
+        ids: list[int] = []
         for enc in enclitics:
             tok = f"ENC_{enc}"
             ids.append(self.enclitic_vocab.get(tok, 0))
@@ -296,7 +296,7 @@ class MorphVocab:
         path.write_text(json.dumps(self.to_dict(), indent=2, ensure_ascii=False))
 
     @classmethod
-    def load(cls, path: str | Path) -> "MorphVocab":
+    def load(cls, path: str | Path) -> MorphVocab:
         d = json.loads(Path(path).read_text())
         vocab = cls(
             root_min_freq=d.get("root_min_freq", 5),

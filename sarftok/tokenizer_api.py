@@ -6,10 +6,8 @@ Pipeline:
 """
 from __future__ import annotations
 
-import functools
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import List, Optional
 
 from sarftok import MorphAnalysis, SentenceTokenization, WordMorphBundle
 from sarftok.config import SarfTokConfig
@@ -80,7 +78,7 @@ class SarfTokTokenizer:
     # Analysis caching
     # ------------------------------------------------------------------
 
-    def _analyze_word_cached(self, word: str) -> List[MorphAnalysis]:
+    def _analyze_word_cached(self, word: str) -> list[MorphAnalysis]:
         if self._cache_size > 0:
             if word in self._word_cache:
                 return self._word_cache[word]
@@ -101,7 +99,7 @@ class SarfTokTokenizer:
     def tokenize_sentence(
         self,
         text: str,
-        raw_text: Optional[str] = None,
+        raw_text: str | None = None,
     ) -> SentenceTokenization:
         """Tokenize a single sentence or short text.
 
@@ -164,9 +162,9 @@ class SarfTokTokenizer:
 
     def tokenize_batch(
         self,
-        texts: List[str],
+        texts: list[str],
         num_workers: int = 1,
-    ) -> List[SentenceTokenization]:
+    ) -> list[SentenceTokenization]:
         """Tokenize a list of texts, optionally in parallel.
 
         Warning: multiprocessing is safe only when using the heuristic
@@ -192,5 +190,5 @@ class SarfTokTokenizer:
         self.config.to_json(path)
 
     @classmethod
-    def from_config(cls, path: str) -> "SarfTokTokenizer":
+    def from_config(cls, path: str) -> SarfTokTokenizer:
         return cls(SarfTokConfig.from_json(path))

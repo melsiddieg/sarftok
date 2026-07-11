@@ -86,11 +86,52 @@ cfg = SarfTokConfig(
     beta=1.0,
     learnable_alpha=False,
     entropy_gating=True,
+    entropy_normalize=True,         # normalise H by ln(k) so β is stable across top_k
     # training losses
     ortho_lambda=0.01,
     ortho_min_confidence=0.5,
 )
 ```
+
+### Analyzer probability semantics
+
+Analyzer backends declare how their per-analysis scores should be interpreted:
+
+- `score_type="prob"` (default) — scores are (unnormalised) probabilities and are
+  **L1-normalised**, preserving a backend's stated confidences (e.g. `0.7 / 0.3`).
+- `score_type="logit"` — scores are logits and are converted with a temperature softmax.
+
+## Fine-tuning an existing LLM
+
+Beyond from-scratch pretraining on the surface vocabulary, SarfTok can morph-fuse an
+**existing** checkpoint. `SarfTokBaseAdapter` aligns morphology to the base model's own
+tokenizer (via `word_ids()`), so the surface IDs and the base embedding table stay
+consistent while the morphology embedding is added on top — no transformer weights change.
+
+```python
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from sarftok import SarfTokConfig
+from sarftok.llm_integration.base_tokenizer_adapter import SarfTokBaseAdapter
+from sarftok.llm_integration.hf_data_collator import SarfTokDataCollator
+from sarftok.llm_integration.hf_modeling_embeddings import HybridSarfTokCausalLM
+from sarftok.morph_vocab import MorphVocab
+
+cfg = SarfTokConfig(analyzer_backend="heuristic", alpha=0.5, ortho_lambda=0.01)
+tok = AutoTokenizer.from_pretrained("gpt2")          # any HF *fast* tokenizer
+base = AutoModelForCausalLM.from_pretrained("gpt2")
+
+adapter  = SarfTokBaseAdapter(tok, cfg)
+collator = SarfTokDataCollator(pad_token_id=tok.pad_token_id or 0)
+model    = HybridSarfTokCausalLM(base, cfg, MorphVocab(root_min_freq=1, pattern_min_freq=1))
+
+batch = collator([adapter.encode_sentence("كتب الطالب الدرس")])
+out = model(**batch)   # out["loss"] backprops into the morphology tables only
+```
+
+A runnable end-to-end version (with a tiny model, no download) is in
+[`examples/finetune_existing_llm.py`](examples/finetune_existing_llm.py). For a full run,
+wrap the model in a `Trainer`/`SFTTrainer` with `remove_unused_columns=False` and this
+collator.
 
 ## Package Layout
 

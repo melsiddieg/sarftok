@@ -16,7 +16,7 @@ The wrapper never modifies the base model's weights by default.
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import torch
 import torch.nn as nn
@@ -28,14 +28,13 @@ from sarftok.morph_vocab import MorphVocab
 from sarftok.probabilistic_embedder import ProbabilisticEmbedder
 from sarftok.serialization import dict_to_analysis
 
-
 # ---------------------------------------------------------------------------
 # Convert collator's morph_analyses (List[List[dict]]) → List[List[MorphAnalysis]]
 # ---------------------------------------------------------------------------
 
 def _dicts_to_analyses(
-    morph_analyses_batch: List[List[List[dict]]],
-) -> List[List[List[MorphAnalysis]]]:
+    morph_analyses_batch: list[list[list[dict]]],
+) -> list[list[list[MorphAnalysis]]]:
     """Convert raw dict analyses (from collator) to MorphAnalysis objects."""
     return [
         [
@@ -78,8 +77,8 @@ class HybridSarfTokEmbedding(nn.Module):
     def forward(
         self,
         input_ids: torch.Tensor,
-        word_to_surface_spans: List[List[Tuple[int, int]]],
-        morph_analyses: Optional[List[List[List[Any]]]] = None,
+        word_to_surface_spans: list[list[tuple[int, int]]],
+        morph_analyses: list[list[list[Any]]] | None = None,
     ) -> torch.Tensor:
         """Return fused embeddings for the full batch.
 
@@ -167,6 +166,7 @@ class HybridSarfTokCausalLM(nn.Module):
             learnable_alpha=config.learnable_alpha,
             entropy_gating=config.entropy_gating,
             beta=config.beta,
+            entropy_normalize=config.entropy_normalize,
         )
         self.hybrid_embedding = HybridSarfTokEmbedding(
             base_embedding=base_emb,
@@ -177,12 +177,12 @@ class HybridSarfTokCausalLM(nn.Module):
     def forward(
         self,
         input_ids: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        labels: Optional[torch.Tensor] = None,
-        word_to_surface_spans: Optional[List[List[Tuple[int, int]]]] = None,
-        morph_analyses: Optional[List[List[List[Any]]]] = None,
+        attention_mask: torch.Tensor | None = None,
+        labels: torch.Tensor | None = None,
+        word_to_surface_spans: list[list[tuple[int, int]]] | None = None,
+        morph_analyses: list[list[list[Any]]] | None = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Forward pass through the hybrid embedding + base transformer.
 
         Returns
@@ -211,7 +211,7 @@ class HybridSarfTokCausalLM(nn.Module):
             and self.sarftok_config.ortho_lambda > 0.0
             and morph_analyses is not None
         ):
-            from llm_integration.losses import orthogonality_loss
+            from sarftok.llm_integration.losses import orthogonality_loss
 
             analyses_obj = _dicts_to_analyses(morph_analyses)
             ortho = orthogonality_loss(
@@ -242,7 +242,7 @@ class HybridSarfTokCausalLM(nn.Module):
     def get_input_embeddings(self) -> nn.Embedding:
         return self.hybrid_embedding.base_embedding
 
-    def get_output_embeddings(self) -> Optional[nn.Module]:
+    def get_output_embeddings(self) -> nn.Module | None:
         return self.base_model.get_output_embeddings()
 
     def save_pretrained(self, save_dir: str) -> None:

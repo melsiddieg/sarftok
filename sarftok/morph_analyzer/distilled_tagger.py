@@ -7,8 +7,6 @@ switching in production requires only a config change.
 """
 from __future__ import annotations
 
-from typing import List
-
 from sarftok import MorphAnalysis
 from sarftok.morph_analyzer.interface import MorphAnalyzer
 
@@ -30,5 +28,5 @@ class DistilledMorphTagger(MorphAnalyzer):
             "analyzer_backend='camel' instead."
         )
 
-    def _raw_analyze_word(self, word: str) -> List[MorphAnalysis]:
+    def _raw_analyze_word(self, word: str) -> list[MorphAnalysis]:
         raise NotImplementedError("DistilledMorphTagger not implemented.")

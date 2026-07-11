@@ -9,17 +9,14 @@ import torch.nn as nn
 
 from sarftok import MorphAnalysis
 from sarftok.config import SarfTokConfig
+from sarftok.llm_integration.hf_data_collator import SarfTokDataCollator
+from sarftok.llm_integration.hf_modeling_embeddings import (
+    HybridSarfTokEmbedding,
+)
 from sarftok.morph_encoder import MorphEncoder
 from sarftok.morph_vocab import MorphVocab
 from sarftok.probabilistic_embedder import ProbabilisticEmbedder
 from sarftok.serialization import analysis_to_dict
-
-from llm_integration.hf_data_collator import SarfTokDataCollator
-from llm_integration.hf_modeling_embeddings import (
-    HybridSarfTokEmbedding,
-    _dicts_to_analyses,
-)
-
 
 # ---------------------------------------------------------------------------
 # Toy model fixtures
@@ -169,7 +166,7 @@ class TestHybridSarfTokEmbedding:
 
 class TestHybridSarfTokCausalLM:
     def test_forward_backward(self, vocab, config):
-        from llm_integration.hf_modeling_embeddings import HybridSarfTokCausalLM
+        from sarftok.llm_integration.hf_modeling_embeddings import HybridSarfTokCausalLM
 
         base = ToyCausalLM(vocab_size=100, hidden_dim=32)
         model = HybridSarfTokCausalLM(base, config, vocab)
@@ -192,7 +189,7 @@ class TestHybridSarfTokCausalLM:
         out["loss"].backward()
 
     def test_forward_without_morph(self, vocab, config):
-        from llm_integration.hf_modeling_embeddings import HybridSarfTokCausalLM
+        from sarftok.llm_integration.hf_modeling_embeddings import HybridSarfTokCausalLM
 
         base = ToyCausalLM(vocab_size=100, hidden_dim=32)
         model = HybridSarfTokCausalLM(base, config, vocab)

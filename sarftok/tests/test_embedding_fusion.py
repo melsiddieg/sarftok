@@ -107,6 +107,32 @@ class TestEntropyGating:
         # H ≈ 0, so alpha ≈ 1.0 * exp(0) = 1.0
         assert abs(eff - 1.0) < 0.01
 
+    def test_normalized_entropy_in_unit_range(self):
+        # A uniform distribution should give H_norm ≈ 1.0 regardless of k.
+        for k in (2, 3, 5):
+            analyses = [MorphAnalysis(prob=1.0 / k, source="test") for _ in range(k)]
+            h_norm = _morphological_entropy(analyses, normalize=True)
+            assert abs(h_norm - 1.0) < 1e-6
+
+    def test_normalization_stabilizes_gate_across_k(self):
+        # With normalisation on, a uniform word yields the same effective alpha
+        # (α₀·exp(-β)) whether it has 2 or 5 analyses — β stays scale-stable.
+        emb = ProbabilisticEmbedder(
+            hidden_dim=8, alpha=1.0, entropy_gating=True, beta=1.0,
+            entropy_normalize=True,
+        )
+        eff_k2 = emb._effective_alpha([MorphAnalysis(prob=0.5, source="t") for _ in range(2)])
+        eff_k5 = emb._effective_alpha([MorphAnalysis(prob=0.2, source="t") for _ in range(5)])
+        assert abs(eff_k2 - eff_k5) < 1e-6
+        # Without normalisation the two would differ (raw H grows with k).
+        emb_raw = ProbabilisticEmbedder(
+            hidden_dim=8, alpha=1.0, entropy_gating=True, beta=1.0,
+            entropy_normalize=False,
+        )
+        raw_k2 = emb_raw._effective_alpha([MorphAnalysis(prob=0.5, source="t") for _ in range(2)])
+        raw_k5 = emb_raw._effective_alpha([MorphAnalysis(prob=0.2, source="t") for _ in range(5)])
+        assert raw_k5 < raw_k2
+
 
 class TestBatchForward:
     def test_batch_shapes(self, embedder_broadcast):

@@ -12,8 +12,6 @@ Design principles
 from __future__ import annotations
 
 import re
-from typing import List, Optional
-
 
 # ---------------------------------------------------------------------------
 # Sentence boundary pattern
@@ -45,7 +43,7 @@ class ArabicSegmenter:
 
     def __init__(
         self,
-        max_sentence_words: Optional[int] = 512,
+        max_sentence_words: int | None = 512,
         min_word_length: int = 1,
     ) -> None:
         self.max_sentence_words = max_sentence_words
@@ -55,7 +53,7 @@ class ArabicSegmenter:
     # Sentence splitting
     # ------------------------------------------------------------------
 
-    def split_sentences(self, text: str) -> List[str]:
+    def split_sentences(self, text: str) -> list[str]:
         """Split *text* into a list of sentence strings.
 
         The text should already be normalised.
@@ -66,7 +64,7 @@ class ArabicSegmenter:
         # Primary split on sentence boundaries
         parts = _SENT_BOUNDARY.split(text)
 
-        sentences: List[str] = []
+        sentences: list[str] = []
         for part in parts:
             part = part.strip()
             if not part:
@@ -87,14 +85,14 @@ class ArabicSegmenter:
     # Word tokenisation
     # ------------------------------------------------------------------
 
-    def tokenize_words(self, sentence: str) -> List[str]:
+    def tokenize_words(self, sentence: str) -> list[str]:
         """Return a list of Arabic word tokens from *sentence*.
 
         Tokens that consist entirely of punctuation/digits and are shorter
         than ``min_word_length`` are filtered out.
         """
         tokens = sentence.split()
-        result: List[str] = []
+        result: list[str] = []
         for tok in tokens:
             if len(tok) < self.min_word_length:
                 continue
@@ -105,7 +103,7 @@ class ArabicSegmenter:
     # Combined segmentation
     # ------------------------------------------------------------------
 
-    def segment(self, text: str) -> List[List[str]]:
+    def segment(self, text: str) -> list[list[str]]:
         """Return ``List[sentence_words]`` — sentences × tokens.
 
         Parameters
@@ -121,9 +119,9 @@ class ArabicSegmenter:
         sentences = self.split_sentences(text)
         return [self.tokenize_words(s) for s in sentences if self.tokenize_words(s)]
 
-    def segment_flat(self, text: str) -> List[str]:
+    def segment_flat(self, text: str) -> list[str]:
         """Return a flat list of word tokens from the whole text."""
-        result: List[str] = []
+        result: list[str] = []
         for sent_words in self.segment(text):
             result.extend(sent_words)
         return result

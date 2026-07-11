@@ -98,3 +98,59 @@ class TestDistilledStub:
         from sarftok.morph_analyzer.distilled_tagger import DistilledMorphTagger
         with pytest.raises(NotImplementedError):
             DistilledMorphTagger()
+
+
+class TestProclitcSliceRegression:
+    """F2 — undiacritised proclitic stripping must not drop a root consonant."""
+
+    def test_definite_article_undiacritised(self, analyzer):
+        # الكتاب → strip 'al' → stem كتاب → root كتب (previously wrongly تاب)
+        results = analyzer.analyze_word("الكتاب")
+        assert "al" in results[0].proclitics
+        assert results[0].root == "كتب"
+
+    def test_wa_proclitic_undiacritised(self, analyzer):
+        # وكتب → strip 'wa' → stem كتب → root كتب
+        results = analyzer.analyze_word("وكتب")
+        assert "wa" in results[0].proclitics
+        assert results[0].root == "كتب"
+
+
+class TestPatternRegression:
+    """F3 — CaCiCa must match the kasra vowel, not the ya letter."""
+
+    def test_cacica_pattern_uses_kasra(self, analyzer):
+        # كَتِب — fatha then kasra → CaCiCa
+        results = analyzer.analyze_word("كَتِب")
+        assert results[0].pattern == "CaCiCa"
+
+
+class TestProbabilitySemantics:
+    """F4 — 'prob' score_type L1-normalises and preserves relative confidences."""
+
+    def test_l1_preserves_distribution(self, analyzer):
+        # Heuristic emits primary 0.7 / alt 0.3 for a known root; these must be
+        # preserved rather than flattened by a softmax (which gives ~0.6/0.4).
+        results = analyzer.analyze_word("كتب")
+        assert len(results) == 2
+        assert abs(results[0].prob - 0.7) < 0.02
+        assert abs(results[1].prob - 0.3) < 0.02
+
+    def test_logit_score_type_uses_softmax(self):
+        from sarftok import MorphAnalysis
+
+        class _Logit(MorphAnalyzer):
+            def _raw_analyze_word(self, word):
+                return [
+                    MorphAnalysis(prob=1.0, root="ktb", source="t"),
+                    MorphAnalysis(prob=0.0, root="ktb", source="t"),
+                ]
+
+        probs = [a.prob for a in _Logit(score_type="logit").analyze_word("x")]
+        # softmax([1,0]) ≈ [0.731, 0.269] — not L1's [1.0, 0.0]
+        assert abs(probs[0] - 0.731) < 0.02
+
+    def test_invalid_score_type_raises(self):
+        from sarftok.morph_analyzer.heuristics import HeuristicMorphAnalyzer
+        with pytest.raises(ValueError, match="score_type"):
+            HeuristicMorphAnalyzer(score_type="bogus")

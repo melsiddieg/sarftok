@@ -14,9 +14,6 @@ Pattern fallback: if pattern is OOV, use PATCLASS or PAT_UNKNOWN embedding.
 """
 from __future__ import annotations
 
-import math
-from typing import List, Optional, Tuple
-
 import torch
 import torch.nn as nn
 
@@ -98,40 +95,35 @@ class MorphEncoder(nn.Module):
         if self.use_composite_root and not analysis.is_oov_root:
             root_id, is_composite = self.vocab.root_id(analysis.root)
             if is_composite and root_id is not None:
-                idx = torch.tensor([root_id], device=device)
-                return self.root_emb(idx).squeeze(0)
+                # Index the weight row directly (differentiable) — avoids
+                # constructing a one-element index tensor per lookup.
+                return self.root_emb.weight[root_id]
 
         # Root-char fallback: mean-pool character embeddings
         char_ids = self.vocab.root_char_ids(analysis.root)
         if not char_ids:
             return torch.zeros(self.hidden_dim, device=device)
-        idx = torch.tensor(char_ids, device=device)
-        return self.rootchar_emb(idx).mean(dim=0)
+        return self.rootchar_emb.weight[char_ids].mean(dim=0)
 
     def _pattern_embedding(self, analysis: MorphAnalysis) -> torch.Tensor:
         """Return pattern embedding, falling back to pattern class / PAT_UNKNOWN."""
-        device = self.pattern_emb.weight.device
-
         if not analysis.is_oov_pattern and analysis.pattern is not None:
             pat_id, tok = self.vocab.pattern_id(analysis.pattern)
-            if not tok == "PAT_UNKNOWN":
-                idx = torch.tensor([pat_id], device=device)
-                return self.pattern_emb(idx).squeeze(0)
+            if tok != "PAT_UNKNOWN":
+                return self.pattern_emb.weight[pat_id]
 
         # Fallback: pattern class embedding
         fallback_id = self.vocab.patclass_vocab.get("PAT_UNKNOWN", 0)
-        idx = torch.tensor([fallback_id], device=device)
-        return self.patclass_emb(idx).squeeze(0)
+        return self.patclass_emb.weight[fallback_id]
 
     def _clitic_sum(
-        self, ids: List[int], emb_table: nn.Embedding
+        self, ids: list[int], emb_table: nn.Embedding
     ) -> torch.Tensor:
         """Sum embedding vectors for a list of token IDs."""
         device = emb_table.weight.device
         if not ids:
             return torch.zeros(self.hidden_dim, device=device)
-        idx = torch.tensor(ids, device=device)
-        return emb_table(idx).sum(dim=0)
+        return emb_table.weight[ids].sum(dim=0)
 
     def _analysis_embedding(self, analysis: MorphAnalysis) -> torch.Tensor:
         """Compute E_i = E_root + E_pat + Σ E_pro + Σ E_enc."""
@@ -149,7 +141,7 @@ class MorphEncoder(nn.Module):
     # Forward
     # ------------------------------------------------------------------
 
-    def forward_word(self, analyses: List[MorphAnalysis]) -> torch.Tensor:
+    def forward_word(self, analyses: list[MorphAnalysis]) -> torch.Tensor:
         """Encode one word's top-k analyses into a single embedding.
 
         Parameters
@@ -180,7 +172,7 @@ class MorphEncoder(nn.Module):
         return self.dropout(emb_sum)
 
     def forward(
-        self, analyses_batch: List[List[List[MorphAnalysis]]]
+        self, analyses_batch: list[list[list[MorphAnalysis]]]
     ) -> torch.Tensor:
         """Encode a batch of sentences.
 
