@@ -37,6 +37,39 @@ class MorphAnalysis:
     lemma: str | None = None
     """Lemma form (Arabic script)."""
 
+    aspect: str | None = None
+    """Verbal aspect, e.g. perfective or imperfective."""
+
+    voice: str | None = None
+    """Voice, e.g. active or passive."""
+
+    mood: str | None = None
+    """Verbal mood, e.g. indicative, subjunctive, or jussive."""
+
+    person: str | None = None
+    """Grammatical person."""
+
+    gender: str | None = None
+    """Grammatical gender."""
+
+    number: str | None = None
+    """Grammatical number."""
+
+    case: str | None = None
+    """Nominal case."""
+
+    state: str | None = None
+    """Nominal state (construct/absolute/etc.)."""
+
+    definiteness: str | None = None
+    """Definiteness feature when supplied by the analyzer."""
+
+    is_contextual: bool = False
+    """True when probabilities are conditioned on sentence context."""
+
+    score_source: str = "unknown"
+    """Provenance of the analysis score (posterior, frequency, uniform, etc.)."""
+
     is_oov_root: bool = False
     """True when root was not found in the root vocabulary."""
 

@@ -3,9 +3,14 @@ test_losses.py — tests for training losses.
 """
 import pytest
 import torch
+import torch.nn as nn
 
 from sarftok import MorphAnalysis
-from sarftok.llm_integration.losses import lm_loss, orthogonality_loss
+from sarftok.llm_integration.losses import (
+    lm_loss,
+    orthogonality_loss,
+    template_parallelism_loss,
+)
 from sarftok.morph_encoder import MorphEncoder
 from sarftok.morph_vocab import MorphVocab
 
@@ -85,3 +90,48 @@ class TestOrthogonalityLoss:
         ]
         loss = orthogonality_loss(encoder, analyses, min_confidence=0.5)
         assert loss.item() == 0.0
+
+
+class TestTemplateParallelismLoss:
+    class _FakeEncoder:
+        def __init__(self, vectors):
+            self.root_emb = nn.Embedding(1, 2)
+            self.vectors = vectors
+
+        def _analysis_embedding(self, analysis):
+            return self.vectors[analysis.lemma]
+
+    @staticmethod
+    def _pairs():
+        return [
+            (
+                MorphAnalysis(prob=1.0, lemma="a1", pattern="I"),
+                MorphAnalysis(prob=1.0, lemma="b1", pattern="II"),
+            ),
+            (
+                MorphAnalysis(prob=1.0, lemma="a2", pattern="I"),
+                MorphAnalysis(prob=1.0, lemma="b2", pattern="II"),
+            ),
+        ]
+
+    def test_zero_for_parallel_template_transformations(self):
+        vectors = {
+            "a1": torch.tensor([0.0, 0.0]),
+            "b1": torch.tensor([1.0, 0.0]),
+            "a2": torch.tensor([0.0, 1.0]),
+            "b2": torch.tensor([1.0, 1.0]),
+        }
+        loss = template_parallelism_loss(self._FakeEncoder(vectors), self._pairs())
+        assert loss.item() == pytest.approx(0.0)
+
+    def test_penalises_nonparallel_template_transformations(self):
+        vectors = {
+            "a1": torch.tensor([0.0, 0.0]),
+            "b1": torch.tensor([1.0, 0.0]),
+            "a2": torch.tensor([0.0, 0.0]),
+            "b2": torch.tensor([0.0, 1.0]),
+        }
+        loss = template_parallelism_loss(
+            self._FakeEncoder(vectors), self._pairs(), lambda_=1.0
+        )
+        assert loss.item() == pytest.approx(1.0)

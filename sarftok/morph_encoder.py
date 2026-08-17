@@ -3,8 +3,8 @@ MorphEncoder — nn.Module that converts morphological analyses into embeddings.
 
 Architecture
 ------------
-For each analysis i of a word:
-    E_i = E_root_i + E_pat_i + Σ_j E_pro_j + Σ_k E_enc_k
+For each analysis i of a word, compose a learned root×pattern interaction
+with POS and morphosyntactic factor embeddings plus clitics.
 
 Probabilistic mixture:
     E_morph = Σ_i p_i * E_i
@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 
 from sarftok import MorphAnalysis
-from sarftok.morph_vocab import MorphVocab
+from sarftok.morph_vocab import FEATURE_NAMES, MorphVocab
 
 
 class MorphEncoder(nn.Module):
@@ -43,11 +43,13 @@ class MorphEncoder(nn.Module):
         hidden_dim: int = 768,
         use_composite_root: bool = True,
         dropout: float = 0.0,
+        use_root_pattern_interaction: bool = True,
     ) -> None:
         super().__init__()
         self.vocab = vocab
         self.hidden_dim = hidden_dim
         self.use_composite_root = use_composite_root
+        self.use_root_pattern_interaction = use_root_pattern_interaction
 
         # Embedding tables
         self.root_emb = nn.Embedding(vocab.num_roots, hidden_dim, padding_idx=None)
@@ -66,6 +68,20 @@ class MorphEncoder(nn.Module):
         self.patclass_emb = nn.Embedding(
             vocab.num_patclasses, hidden_dim, padding_idx=None
         )
+        self.feature_embs = nn.ModuleDict(
+            {
+                name: nn.Embedding(vocab.num_feature_values(name), hidden_dim)
+                for name in FEATURE_NAMES
+            }
+        )
+
+        # Explicit root × pattern composition:
+        # W2(GELU(Wr Er + Wp Ep + Wrp(Er ⊙ Ep))).
+        self.root_projection = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.pattern_projection = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.interaction_projection = nn.Linear(hidden_dim, hidden_dim, bias=False)
+        self.composition_output = nn.Linear(hidden_dim, hidden_dim)
+        self.composition_activation = nn.GELU()
 
         self.dropout = nn.Dropout(dropout)
         self._init_weights()
@@ -80,6 +96,19 @@ class MorphEncoder(nn.Module):
             self.patclass_emb,
         ):
             nn.init.normal_(emb.weight, mean=0.0, std=0.02)
+        for name in FEATURE_NAMES:
+            feature_emb = self.feature_embs[name]
+            assert isinstance(feature_emb, nn.Embedding)
+            nn.init.normal_(feature_emb.weight, mean=0.0, std=0.02)
+        for linear in (
+            self.root_projection,
+            self.pattern_projection,
+            self.interaction_projection,
+            self.composition_output,
+        ):
+            nn.init.xavier_uniform_(linear.weight)
+            if linear.bias is not None:
+                nn.init.zeros_(linear.bias)
 
     # ------------------------------------------------------------------
     # Per-analysis embedding
@@ -125,8 +154,34 @@ class MorphEncoder(nn.Module):
             return torch.zeros(self.hidden_dim, device=device)
         return emb_table.weight[ids].sum(dim=0)
 
+    def _root_pattern_embedding(
+        self,
+        e_root: torch.Tensor,
+        e_pattern: torch.Tensor,
+    ) -> torch.Tensor:
+        if not self.use_root_pattern_interaction:
+            return e_root + e_pattern
+        hidden = (
+            self.root_projection(e_root)
+            + self.pattern_projection(e_pattern)
+            + self.interaction_projection(e_root * e_pattern)
+        )
+        return self.composition_output(self.composition_activation(hidden))
+
+    def _feature_sum(self, analysis: MorphAnalysis) -> torch.Tensor:
+        result = torch.zeros(self.hidden_dim, device=self.root_emb.weight.device)
+        for name in FEATURE_NAMES:
+            emb = self.feature_embs[name]
+            assert isinstance(emb, nn.Embedding)
+            value = getattr(analysis, name)
+            # Missing features should contribute no signal rather than a learned
+            # unknown vector; explicit unknown analyzer labels still get an ID.
+            if value is not None:
+                result = result + emb.weight[self.vocab.feature_id(name, value)]
+        return result
+
     def _analysis_embedding(self, analysis: MorphAnalysis) -> torch.Tensor:
-        """Compute E_i = E_root + E_pat + Σ E_pro + Σ E_enc."""
+        """Compose root/pattern, categorical features, and clitics."""
         e_root = self._root_embedding(analysis)
         e_pat = self._pattern_embedding(analysis)
         e_pro = self._clitic_sum(
@@ -135,7 +190,8 @@ class MorphEncoder(nn.Module):
         e_enc = self._clitic_sum(
             self.vocab.enclitic_ids(analysis.enclitics), self.enclitic_emb
         )
-        return e_root + e_pat + e_pro + e_enc
+        e_features = self._feature_sum(analysis)
+        return self._root_pattern_embedding(e_root, e_pat) + e_features + e_pro + e_enc
 
     # ------------------------------------------------------------------
     # Forward

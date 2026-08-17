@@ -8,6 +8,7 @@ when the tokenizer cannot be downloaded (offline CI).
 import pytest
 import torch.nn as nn
 
+from sarftok import MorphAnalysis
 from sarftok.alignment import validate_spans
 from sarftok.config import SarfTokConfig
 from sarftok.llm_integration.base_tokenizer_adapter import (
@@ -149,6 +150,24 @@ class TestAdapterEncoding:
         out = adapter.encode_sentence("")
         assert out["num_words"] == 0
         assert out["word_to_surface_spans"] == []
+
+    def test_contextual_analyzer_receives_lossless_classical_text(self):
+        class Recorder:
+            def analyze_sentence(self, words, context=None):
+                self.words = words
+                self.context = context
+                return [[MorphAnalysis(prob=1.0, root="علو", is_contextual=True)]]
+
+        recorder = Recorder()
+        adapter = SarfTokBaseAdapter(
+            MockFastTokenizer(),
+            SarfTokConfig(),
+            analyzer=recorder,
+        )
+        out = adapter.encode_sentence("أعلى")
+        assert recorder.words == ["أعلى"]
+        assert recorder.context == "أعلى"
+        assert out["morph_analyses"][0][0]["is_contextual"] is True
 
 
 # ---------------------------------------------------------------------------

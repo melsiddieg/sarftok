@@ -64,6 +64,23 @@ class TestBroadcastMode:
         # Second word span should have value 1.0 (alpha * 2.0)
         assert torch.allclose(out[2], torch.ones(32) * 1.0)
 
+    @pytest.mark.parametrize(
+        ("scaling", "expected"),
+        [("none", 1.0), ("sqrt", 0.5), ("linear", 0.25)],
+    )
+    def test_piece_count_scaling(self, scaling, expected):
+        embedder = ProbabilisticEmbedder(
+            hidden_dim=4,
+            fusion_mode="broadcast",
+            alpha=1.0,
+            entropy_gating=False,
+            broadcast_piece_scaling=scaling,
+        )
+        out = embedder.forward_sentence(
+            torch.zeros(4, 4), torch.ones(1, 4), [(0, 4)]
+        )
+        assert torch.allclose(out, torch.full((4, 4), expected))
+
 
 class TestFirstPieceMode:
     def test_only_first_piece_modified(self, embedder_fp):
@@ -132,6 +149,22 @@ class TestEntropyGating:
         raw_k2 = emb_raw._effective_alpha([MorphAnalysis(prob=0.5, source="t") for _ in range(2)])
         raw_k5 = emb_raw._effective_alpha([MorphAnalysis(prob=0.2, source="t") for _ in range(5)])
         assert raw_k5 < raw_k2
+
+    def test_learnable_alpha_receives_gradient(self):
+        embedder = ProbabilisticEmbedder(
+            hidden_dim=4,
+            alpha=0.5,
+            learnable_alpha=True,
+            entropy_gating=True,
+        )
+        out = embedder.forward_sentence(
+            torch.zeros(1, 4),
+            torch.ones(1, 4),
+            [(0, 1)],
+            [[MorphAnalysis(prob=1.0)]],
+        )
+        out.sum().backward()
+        assert embedder.alpha.grad is not None
 
 
 class TestBatchForward:

@@ -31,6 +31,10 @@ class TestBuiltins:
     def test_enclitic_vocab_populated(self, vocab):
         assert vocab.num_enclitics > 0
 
+    def test_morphosyntactic_factor_vocabs_populated(self, vocab):
+        for name in ("pos", "case", "mood", "voice", "person", "number", "gender"):
+            assert vocab.num_feature_values(name) > 1
+
 
 class TestRootLookup:
     def test_unknown_root_returns_not_composite(self, vocab):
@@ -70,6 +74,17 @@ class TestBuildFromAnalyses:
         rid, is_composite = vocab.root_id("rareroot")
         assert not is_composite
 
+    def test_build_records_observed_feature_values(self):
+        analysis = MorphAnalysis(
+            prob=1.0,
+            root="كتب",
+            case="custom_case",
+            mood="custom_mood",
+        )
+        vocab = MorphVocab.build_from_analyses(iter([[[analysis]]]))
+        assert vocab.feature_id("case", "custom_case") != 0
+        assert vocab.feature_id("mood", "custom_mood") != 0
+
 
 class TestSaveLoad:
     def test_roundtrip(self, vocab):
@@ -85,6 +100,7 @@ class TestSaveLoad:
         assert loaded.root_vocab == vocab.root_vocab
         assert loaded.pattern_vocab == vocab.pattern_vocab
         assert loaded.root_min_freq == vocab.root_min_freq
+        assert loaded.feature_vocabs == vocab.feature_vocabs
 
     def test_json_valid(self, vocab):
         with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:

@@ -25,6 +25,12 @@ class SarfTokConfig:
     strip_diacritics: bool = False
     """Strip harakat when True (for ablations only)."""
 
+    normalise_alef: bool = False
+    """Collapse alef variants for analyzer input. Disabled for Classical Arabic."""
+
+    normalise_ya: bool = False
+    """Collapse alif maqsura/Farsi yeh for analyzer input. Disabled for Classical Arabic."""
+
     # ------------------------------------------------------------------
     # Surface tokenizer
     # ------------------------------------------------------------------
@@ -51,6 +57,12 @@ class SarfTokConfig:
 
     analyzer_temperature: float = 1.0
     """Temperature for softmax re-normalisation of analyzer scores."""
+
+    camel_db: str = "calima-clx-r13"
+    """CAMeL morphology database. Defaults to the Classical Arabic database."""
+
+    contextual_analysis: bool = True
+    """Analyze complete sentences so context-capable backends can return posteriors."""
 
     # ------------------------------------------------------------------
     # Morphological vocabulary
@@ -91,14 +103,26 @@ class SarfTokConfig:
     entropy_normalize: bool = True
     """If True, normalise H by ln(k_eff) so β is stable across top_k values."""
 
+    broadcast_piece_scaling: Literal["none", "sqrt", "linear"] = "sqrt"
+    """Scale broadcast morphology by 1, 1/sqrt(n), or 1/n surface pieces."""
+
+    root_pattern_interaction: bool = True
+    """Compose roots and patterns with a learned multiplicative interaction."""
+
+    fusion_layer_norm: bool = False
+    """Apply LayerNorm after morphology fusion (opt-in for checkpoint compatibility)."""
+
     # ------------------------------------------------------------------
     # Training losses
     # ------------------------------------------------------------------
-    ortho_lambda: float = 0.01
-    """Coefficient for the orthogonality regularisation loss."""
+    ortho_lambda: float = 0.0
+    """Orthogonality coefficient. Disabled by default; use only as an ablation."""
 
     ortho_min_confidence: float = 0.5
     """Only apply ortho loss for analyses with prob ≥ this threshold."""
+
+    template_lambda: float = 0.0
+    """Coefficient for template-parallelism loss when template pairs are supplied."""
 
     # ------------------------------------------------------------------
     # Preprocessing

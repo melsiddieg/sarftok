@@ -68,11 +68,13 @@ class HybridSarfTokEmbedding(nn.Module):
         base_embedding: nn.Embedding,
         morph_encoder: MorphEncoder,
         probabilistic_embedder: ProbabilisticEmbedder,
+        layer_norm: bool = False,
     ) -> None:
         super().__init__()
         self.base_embedding = base_embedding
         self.morph_encoder = morph_encoder
         self.probabilistic_embedder = probabilistic_embedder
+        self.layer_norm = nn.LayerNorm(base_embedding.embedding_dim) if layer_norm else None
 
     def forward(
         self,
@@ -115,7 +117,7 @@ class HybridSarfTokEmbedding(nn.Module):
             word_to_surface_spans=word_to_surface_spans,
             analyses_batch=analyses_obj,
         )
-        return fused
+        return self.layer_norm(fused) if self.layer_norm is not None else fused
 
 
 # ---------------------------------------------------------------------------
@@ -158,6 +160,7 @@ class HybridSarfTokCausalLM(nn.Module):
             vocab=vocab,
             hidden_dim=hidden_dim,
             use_composite_root=True,
+            use_root_pattern_interaction=config.root_pattern_interaction,
         )
         prob_embedder = ProbabilisticEmbedder(
             hidden_dim=hidden_dim,
@@ -167,11 +170,13 @@ class HybridSarfTokCausalLM(nn.Module):
             entropy_gating=config.entropy_gating,
             beta=config.beta,
             entropy_normalize=config.entropy_normalize,
+            broadcast_piece_scaling=config.broadcast_piece_scaling,
         )
         self.hybrid_embedding = HybridSarfTokEmbedding(
             base_embedding=base_emb,
             morph_encoder=morph_encoder,
             probabilistic_embedder=prob_embedder,
+            layer_norm=config.fusion_layer_norm,
         )
 
     def forward(
@@ -181,6 +186,7 @@ class HybridSarfTokCausalLM(nn.Module):
         labels: torch.Tensor | None = None,
         word_to_surface_spans: list[list[tuple[int, int]]] | None = None,
         morph_analyses: list[list[list[Any]]] | None = None,
+        template_pairs: list[tuple[Any, Any]] | None = None,
         **kwargs,
     ) -> dict[str, Any]:
         """Forward pass through the hybrid embedding + base transformer.
@@ -205,32 +211,43 @@ class HybridSarfTokCausalLM(nn.Module):
             **kwargs,
         )
 
-        # Optionally add orthogonality loss
-        if (
-            labels is not None
-            and self.sarftok_config.ortho_lambda > 0.0
-            and morph_analyses is not None
-        ):
-            from sarftok.llm_integration.losses import orthogonality_loss
-
+        auxiliary: dict[str, torch.Tensor] = {}
+        if labels is not None and morph_analyses is not None:
             analyses_obj = _dicts_to_analyses(morph_analyses)
-            ortho = orthogonality_loss(
-                encoder=self.hybrid_embedding.morph_encoder,
-                analyses_batch=analyses_obj,
-                min_confidence=self.sarftok_config.ortho_min_confidence,
-                lambda_=self.sarftok_config.ortho_lambda,
-            )
-            # HF model outputs are Dataclass-like — best to wrap in dict
-            if hasattr(outputs, "loss") and outputs.loss is not None:
-                total_loss = outputs.loss + ortho
-            else:
-                total_loss = ortho
+            if self.sarftok_config.ortho_lambda > 0.0:
+                from sarftok.llm_integration.losses import orthogonality_loss
 
+                auxiliary["ortho_loss"] = orthogonality_loss(
+                    encoder=self.hybrid_embedding.morph_encoder,
+                    analyses_batch=analyses_obj,
+                    min_confidence=self.sarftok_config.ortho_min_confidence,
+                    lambda_=self.sarftok_config.ortho_lambda,
+                )
+
+        if labels is not None and template_pairs and self.sarftok_config.template_lambda > 0:
+            from sarftok.llm_integration.losses import template_parallelism_loss
+
+            object_pairs = [
+                (
+                    dict_to_analysis(before) if isinstance(before, dict) else before,
+                    dict_to_analysis(after) if isinstance(after, dict) else after,
+                )
+                for before, after in template_pairs
+            ]
+            auxiliary["template_loss"] = template_parallelism_loss(
+                self.hybrid_embedding.morph_encoder,
+                object_pairs,
+                lambda_=self.sarftok_config.template_lambda,
+            )
+
+        if auxiliary:
+            lm = outputs.loss if hasattr(outputs, "loss") else None
+            total_loss = sum(auxiliary.values(), lm if lm is not None else 0.0)
             return {
                 "loss": total_loss,
                 "logits": outputs.logits,
-                "lm_loss": outputs.loss,
-                "ortho_loss": ortho,
+                "lm_loss": lm,
+                **auxiliary,
             }
 
         return outputs
@@ -254,6 +271,11 @@ class HybridSarfTokCausalLM(nn.Module):
             {
                 "morph_encoder": self.hybrid_embedding.morph_encoder.state_dict(),
                 "probabilistic_embedder": self.hybrid_embedding.probabilistic_embedder.state_dict(),
+                "layer_norm": (
+                    self.hybrid_embedding.layer_norm.state_dict()
+                    if self.hybrid_embedding.layer_norm is not None
+                    else None
+                ),
             },
             os.path.join(save_dir, "sarftok_embeddings.pt"),
         )
@@ -270,3 +292,5 @@ class HybridSarfTokCausalLM(nn.Module):
         self.hybrid_embedding.probabilistic_embedder.load_state_dict(
             state["probabilistic_embedder"]
         )
+        if self.hybrid_embedding.layer_norm is not None and state.get("layer_norm") is not None:
+            self.hybrid_embedding.layer_norm.load_state_dict(state["layer_norm"])

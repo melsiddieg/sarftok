@@ -150,7 +150,62 @@ class TestProbabilitySemantics:
         # softmax([1,0]) ≈ [0.731, 0.269] — not L1's [1.0, 0.0]
         assert abs(probs[0] - 0.731) < 0.02
 
+    def test_negative_logits_are_not_replaced_with_uniform_scores(self):
+        class _NegativeLogits(MorphAnalyzer):
+            def _raw_analyze_word(self, word):
+                return [
+                    MorphAnalysis(prob=-1.0, root="a"),
+                    MorphAnalysis(prob=-2.0, root="b"),
+                ]
+
+        probs = [
+            a.prob
+            for a in _NegativeLogits(score_type="logit").analyze_word("x")
+        ]
+        assert probs[0] == pytest.approx(0.731, abs=0.02)
+
     def test_invalid_score_type_raises(self):
         from sarftok.morph_analyzer.heuristics import HeuristicMorphAnalyzer
         with pytest.raises(ValueError, match="score_type"):
             HeuristicMorphAnalyzer(score_type="bogus")
+
+    def test_uniform_large_candidate_set_is_renormalised_after_top_k(self):
+        class _Uniform(MorphAnalyzer):
+            def _raw_analyze_word(self, word):
+                return [MorphAnalysis(prob=1.0, root=str(i)) for i in range(100)]
+
+        results = _Uniform(top_k=3, confidence_threshold=0.05).analyze_word("x")
+        assert len(results) == 3
+        assert sum(a.prob for a in results) == pytest.approx(1.0)
+
+
+class TestContextualSentenceAPI:
+    def test_sentence_override_receives_context_and_is_normalised(self):
+        class _Contextual(MorphAnalyzer):
+            def _raw_analyze_word(self, word):
+                raise AssertionError("word fallback must not be used")
+
+            def _raw_analyze_sentence(self, words, context=None):
+                assert context == "كتب الرجل"
+                return [
+                    [
+                        MorphAnalysis(prob=9.0, root="كتب", is_contextual=True),
+                        MorphAnalysis(prob=1.0, root="كتب", is_contextual=True),
+                    ],
+                    [MorphAnalysis(prob=1.0, root="رجل", is_contextual=True)],
+                ]
+
+        result = _Contextual().analyze_sentence(["كتب", "الرجل"], context="كتب الرجل")
+        assert result[0][0].prob == pytest.approx(0.9)
+        assert all(a.is_contextual for word in result for a in word)
+
+    def test_wrong_sentence_length_raises(self):
+        class _Broken(MorphAnalyzer):
+            def _raw_analyze_word(self, word):
+                return []
+
+            def _raw_analyze_sentence(self, words, context=None):
+                return []
+
+        with pytest.raises(ValueError, match="different number"):
+            _Broken().analyze_sentence(["كتب"])

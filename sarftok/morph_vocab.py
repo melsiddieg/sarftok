@@ -8,6 +8,8 @@ Maintains separate sub-vocabularies for:
   * enclitics        → ENC_<label>            e.g. ENC_hum
   * root characters  → ROOTCHAR_<char>        e.g. ROOTCHAR_k
   * pattern classes  → PATCLASS_<class>       e.g. PATCLASS_nominal
+  * morphosyntactic factors (POS, case, mood, voice, person, number,
+    gender, aspect, state, and definiteness)
 
 OOV strategies
 --------------
@@ -68,6 +70,32 @@ _BUILTIN_ENCLITICS = [
     "na", "ni", "ka", "ki", "ya", "y", "h", "kuma", "huma", "nn",
 ]
 
+FEATURE_NAMES = (
+    "pos",
+    "aspect",
+    "voice",
+    "mood",
+    "person",
+    "gender",
+    "number",
+    "case",
+    "state",
+    "definiteness",
+)
+
+_BUILTIN_FEATURE_VALUES: dict[str, tuple[str, ...]] = {
+    "pos": ("noun", "verb", "adj", "adv", "pron", "prep", "conj", "part", "num"),
+    "aspect": ("p", "i", "c", "perfect", "imperfect", "imperative"),
+    "voice": ("a", "p", "active", "passive"),
+    "mood": ("i", "s", "j", "u", "indicative", "subjunctive", "jussive"),
+    "person": ("1", "2", "3"),
+    "gender": ("m", "f", "masculine", "feminine"),
+    "number": ("s", "d", "p", "singular", "dual", "plural"),
+    "case": ("n", "a", "g", "u", "nominative", "accusative", "genitive"),
+    "state": ("d", "i", "c", "definite", "indefinite", "construct"),
+    "definiteness": ("def", "indef", "definite", "indefinite"),
+}
+
 
 # ---------------------------------------------------------------------------
 # MorphVocab
@@ -100,6 +128,9 @@ class MorphVocab:
         self.enclitic_vocab: dict[str, int] = {}
         self.rootchar_vocab: dict[str, int] = {}
         self.patclass_vocab: dict[str, int] = {}
+        self.feature_vocabs: dict[str, dict[str, int]] = {
+            name: {UNK_TOKEN: 0} for name in FEATURE_NAMES
+        }
 
         self._init_builtins()
 
@@ -130,6 +161,11 @@ class MorphVocab:
             if tok not in self.enclitic_vocab:
                 self.enclitic_vocab[tok] = len(self.enclitic_vocab)
 
+        for name, values in _BUILTIN_FEATURE_VALUES.items():
+            for value in values:
+                if value not in self.feature_vocabs[name]:
+                    self.feature_vocabs[name][value] = len(self.feature_vocabs[name])
+
     # ------------------------------------------------------------------
     # Building from corpus
     # ------------------------------------------------------------------
@@ -156,6 +192,7 @@ class MorphVocab:
         """
         root_counts: Counter = Counter()
         pattern_counts: Counter = Counter()
+        observed_features: dict[str, set[str]] = {name: set() for name in FEATURE_NAMES}
 
         for sentence_analyses in analyses_iter:
             for word_analyses in sentence_analyses:
@@ -164,6 +201,10 @@ class MorphVocab:
                         root_counts[a.root] += 1
                     if a.pattern:
                         pattern_counts[a.pattern] += 1
+                    for name in FEATURE_NAMES:
+                        value = getattr(a, name)
+                        if value:
+                            observed_features[name].add(value)
 
         vocab = cls(root_min_freq=root_min_freq, pattern_min_freq=pattern_min_freq)
 
@@ -178,6 +219,11 @@ class MorphVocab:
                 tok = f"PAT_{pattern}"
                 if tok not in vocab.pattern_vocab:
                     vocab.pattern_vocab[tok] = len(vocab.pattern_vocab)
+
+        for name, values in observed_features.items():
+            for value in sorted(values):
+                if value not in vocab.feature_vocabs[name]:
+                    vocab.feature_vocabs[name][value] = len(vocab.feature_vocabs[name])
 
         return vocab
 
@@ -246,6 +292,15 @@ class MorphVocab:
             ids.append(self.enclitic_vocab.get(tok, 0))
         return ids
 
+    def feature_id(self, name: str, value: str | None) -> int:
+        """Return an ID for a categorical morphosyntactic feature."""
+        if name not in self.feature_vocabs:
+            raise KeyError(f"Unknown morphology feature: {name!r}")
+        return self.feature_vocabs[name].get(value or UNK_TOKEN, 0)
+
+    def num_feature_values(self, name: str) -> int:
+        return max(len(self.feature_vocabs[name]), 1)
+
     # ------------------------------------------------------------------
     # Sizes (for nn.Embedding initialisation)
     # ------------------------------------------------------------------
@@ -288,6 +343,7 @@ class MorphVocab:
             "enclitic_vocab": self.enclitic_vocab,
             "rootchar_vocab": self.rootchar_vocab,
             "patclass_vocab": self.patclass_vocab,
+            "feature_vocabs": self.feature_vocabs,
         }
 
     def save(self, path: str | Path) -> None:
@@ -309,4 +365,8 @@ class MorphVocab:
         vocab.enclitic_vocab = d.get("enclitic_vocab", vocab.enclitic_vocab)
         vocab.rootchar_vocab = d.get("rootchar_vocab", vocab.rootchar_vocab)
         vocab.patclass_vocab = d.get("patclass_vocab", vocab.patclass_vocab)
+        saved_features = d.get("feature_vocabs", {})
+        for name in FEATURE_NAMES:
+            if name in saved_features:
+                vocab.feature_vocabs[name] = saved_features[name]
         return vocab
