@@ -78,6 +78,7 @@ class ProbabilisticEmbedder(nn.Module):
         entropy_gating: bool = True,
         beta: float = 1.0,
         entropy_normalize: bool = True,
+        broadcast_piece_scaling: Literal["none", "sqrt", "linear"] = "none",
     ) -> None:
         super().__init__()
         self.hidden_dim = hidden_dim
@@ -85,6 +86,11 @@ class ProbabilisticEmbedder(nn.Module):
         self.entropy_gating = entropy_gating
         self.beta = beta
         self.entropy_normalize = entropy_normalize
+        if broadcast_piece_scaling not in ("none", "sqrt", "linear"):
+            raise ValueError(
+                "broadcast_piece_scaling must be 'none', 'sqrt', or 'linear'"
+            )
+        self.broadcast_piece_scaling = broadcast_piece_scaling
 
         if learnable_alpha:
             self.alpha = nn.Parameter(torch.tensor(alpha))
@@ -95,13 +101,19 @@ class ProbabilisticEmbedder(nn.Module):
     # Gating
     # ------------------------------------------------------------------
 
-    def _effective_alpha(self, analyses: list[MorphAnalysis] | None) -> float:
+    def _effective_alpha(self, analyses: list[MorphAnalysis] | None) -> torch.Tensor:
         """Return the effective alpha for a word given its analyses."""
-        base = float(self.alpha)
         if not self.entropy_gating or not analyses:
-            return base
+            return self.alpha
         H = _morphological_entropy(analyses, normalize=self.entropy_normalize)
-        return base * math.exp(-self.beta * H)
+        return self.alpha * math.exp(-self.beta * H)
+
+    def _broadcast_scale(self, num_pieces: int) -> float:
+        if self.broadcast_piece_scaling == "sqrt":
+            return 1.0 / math.sqrt(num_pieces)
+        if self.broadcast_piece_scaling == "linear":
+            return 1.0 / num_pieces
+        return 1.0
 
     # ------------------------------------------------------------------
     # Forward (single-sentence, for clarity and debugging)
@@ -148,7 +160,8 @@ class ProbabilisticEmbedder(nn.Module):
             m_emb = morph_emb[j]  # (hidden_dim,)
 
             if self.fusion_mode == "broadcast":
-                fused[s:e] = fused[s:e] + eff_alpha * m_emb.unsqueeze(0)
+                piece_scale = self._broadcast_scale(e - s)
+                fused[s:e] = fused[s:e] + piece_scale * eff_alpha * m_emb.unsqueeze(0)
             else:  # first_piece
                 fused[s] = fused[s] + eff_alpha * m_emb
 

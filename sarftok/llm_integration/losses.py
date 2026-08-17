@@ -5,6 +5,7 @@ Implemented losses
 ------------------
 1. lm_loss        — standard causal next-token cross-entropy (delegate to HF)
 2. orthogonality_loss — penalise cosine similarity between root and pattern vecs
+3. template_parallelism_loss — align same-template transformation vectors
 """
 from __future__ import annotations
 
@@ -98,25 +99,47 @@ def orthogonality_loss(
 
 def template_parallelism_loss(
     encoder: MorphEncoder,
-    pairs: list[tuple],
+    pairs: list[tuple[MorphAnalysis, MorphAnalysis]],
     lambda_: float = 0.01,
 ) -> torch.Tensor:
-    """Optional Phase-3 loss encouraging template-parallel vector differences.
+    """Encourage the same pattern transition to be parallel across roots.
 
-    Not implemented for MVP — returns 0 with a warning.
+    Each pair ``(a, b)`` defines a transformation vector ``E(b)-E(a)`` and
+    is grouped by ``(a.pattern, b.pattern)``. Within a group, all pairwise
+    cosine distances are minimized. For example, ``فعل→فاعل`` transformations
+    for كتب, ضرب, and نصر form one group.
 
     Parameters
     ----------
     pairs:
-        List of (analysis_a, analysis_b) pairs differing only by pattern.
+        ``(analysis_a, analysis_b)`` transformations. At least two pairs with
+        the same pattern transition are required to contribute a loss.
     lambda_:
         Loss coefficient.
     """
-    import warnings
-    warnings.warn(
-        "template_parallelism_loss is a Phase-3 feature and not yet implemented. "
-        "Returning 0.",
-        stacklevel=2,
-    )
     device = encoder.root_emb.weight.device
-    return torch.tensor(0.0, device=device)
+    grouped: dict[tuple[str, str], list[torch.Tensor]] = {}
+
+    for before, after in pairs:
+        if before.pattern is None or after.pattern is None:
+            continue
+        if before.pattern == after.pattern:
+            continue
+        transition = (before.pattern, after.pattern)
+        difference = encoder._analysis_embedding(after) - encoder._analysis_embedding(before)
+        grouped.setdefault(transition, []).append(difference)
+
+    distances: list[torch.Tensor] = []
+    for differences in grouped.values():
+        for i in range(len(differences)):
+            for j in range(i + 1, len(differences)):
+                cosine = F.cosine_similarity(
+                    differences[i].unsqueeze(0),
+                    differences[j].unsqueeze(0),
+                    eps=1e-8,
+                )
+                distances.append(1.0 - cosine)
+
+    if not distances:
+        return torch.tensor(0.0, device=device, requires_grad=True)
+    return lambda_ * torch.stack(distances).mean()

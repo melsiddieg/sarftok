@@ -12,6 +12,7 @@ Tests cover:
 """
 import pytest
 
+from sarftok.config import SarfTokConfig
 from sarftok.normalizer import ArabicNormalizer, normalize_text
 
 
@@ -110,3 +111,13 @@ class TestNormalizerClass:
         n = ArabicNormalizer(mode="classical_strict")
         result = n.normalise("\u0623\u0647\u0644")
         assert result == "\u0627\u0647\u0644"
+
+    def test_classical_config_preserves_alef_and_ya_by_default(self):
+        config = SarfTokConfig()
+        n = ArabicNormalizer(
+            mode=config.norm_mode,
+            strip_diacritics=config.strip_diacritics,
+            normalise_alef=config.normalise_alef,
+            normalise_ya=config.normalise_ya,
+        )
+        assert n.normalise("أعلى") == "أعلى"

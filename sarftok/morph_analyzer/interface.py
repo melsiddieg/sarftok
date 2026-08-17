@@ -19,9 +19,9 @@ from sarftok import MorphAnalysis
 class MorphAnalyzer(ABC):
     """Abstract morphological analyzer.
 
-    Subclasses must implement :meth:`_raw_analyze_sentence` which returns
-    a raw backend-specific structure.  This class handles normalisation,
-    top-k selection, and probability calibration.
+    Subclasses implement :meth:`_raw_analyze_word`; context-capable backends
+    additionally override :meth:`_raw_analyze_sentence`. This class handles
+    normalisation, top-k selection, and probability calibration.
 
     Parameters
     ----------
@@ -77,6 +77,18 @@ class MorphAnalyzer(ABC):
             May be empty if the word is unanalyzable.
         """
 
+    def _raw_analyze_sentence(
+        self,
+        words: list[str],
+        context: str | None = None,
+    ) -> list[list[MorphAnalysis]]:
+        """Return raw sentence analyses.
+
+        Word-independent backends inherit this fallback. Contextual backends
+        override it and return scores conditioned on the complete sentence.
+        """
+        return [self._raw_analyze_word(word) for word in words]
+
     # ------------------------------------------------------------------
     # Normalisation pipeline
     # ------------------------------------------------------------------
@@ -97,14 +109,6 @@ class MorphAnalyzer(ABC):
             return analyses
 
         raw_probs = [a.prob for a in analyses]
-        total = sum(raw_probs)
-
-        if total <= 0:
-            # Assign uniform scores then normalise
-            n = len(analyses)
-            for a in analyses:
-                a.prob = 1.0 / n
-            return analyses
 
         if self.score_type == "logit":
             # Temperature softmax over logits
@@ -115,6 +119,12 @@ class MorphAnalyzer(ABC):
             for a, e in zip(analyses, exps):
                 a.prob = e / sum_exps
         else:
+            total = sum(raw_probs)
+            if total <= 0:
+                n = len(analyses)
+                for a in analyses:
+                    a.prob = 1.0 / n
+                return analyses
             # L1-normalise (preserve relative confidences)
             probs = [p / total for p in raw_probs]
             if self.temperature != 1.0:
@@ -147,14 +157,17 @@ class MorphAnalyzer(ABC):
 
     def analyze_word(self, word: str) -> list[MorphAnalysis]:
         """Return top-k normalised analyses for a single *word*."""
-        raw = self._raw_analyze_word(word)
-        normed = self._normalise_probs(raw)
-        return self._select_top_k(normed)
+        # Truncate before calibration so the retained top-k form a complete
+        # distribution. This is essential for meaningful entropy gating and
+        # prevents a large uniform candidate set from being entirely removed
+        # by the confidence threshold.
+        raw_top_k = self._select_top_k(self._raw_analyze_word(word))
+        return self._normalise_probs(raw_top_k)
 
     def analyze_sentence(
         self,
         words: list[str],
-        context: str | None = None,  # noqa: ARG002 (future use for contextual analyzers)
+        context: str | None = None,
     ) -> list[list[MorphAnalysis]]:
         """Return analyses for every word in *words*.
 
@@ -163,11 +176,20 @@ class MorphAnalyzer(ABC):
         words:
             Pre-tokenised list of Arabic word strings.
         context:
-            Full sentence string (reserved for context-sensitive backends).
+            Full sentence string supplied to context-sensitive backends.
 
         Returns
         -------
         List[List[MorphAnalysis]]
             One inner list per word.  Empty inner list = unanalyzable.
         """
-        return [self.analyze_word(w) for w in words]
+        raw_sentence = self._raw_analyze_sentence(words, context=context)
+        if len(raw_sentence) != len(words):
+            raise ValueError(
+                "Analyzer returned a different number of word results: "
+                f"expected {len(words)}, got {len(raw_sentence)}"
+            )
+        return [
+            self._normalise_probs(self._select_top_k(raw))
+            for raw in raw_sentence
+        ]

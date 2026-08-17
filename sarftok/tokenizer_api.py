@@ -27,6 +27,7 @@ def _build_analyzer(config: SarfTokConfig):
     elif config.analyzer_backend == "camel":
         from sarftok.morph_analyzer.camel_wrapper import CamelMorphAnalyzer
         return CamelMorphAnalyzer(
+            db_name=config.camel_db,
             top_k=config.top_k,
             confidence_threshold=config.confidence_threshold,
             temperature=config.analyzer_temperature,
@@ -56,21 +57,26 @@ class SarfTokTokenizer:
     word_cache_size:
         Maximum number of word→analyses pairs to cache (LRU).  Set to 0
         to disable caching.
+    analyzer:
+        Optional analyzer instance, including a context-capable backend.
     """
 
     def __init__(
         self,
         config: SarfTokConfig,
         word_cache_size: int = 50_000,
+        analyzer=None,
     ) -> None:
         self.config = config
         self.normalizer = ArabicNormalizer(
             mode=config.norm_mode,
             strip_diacritics=config.strip_diacritics,
+            normalise_alef=config.normalise_alef,
+            normalise_ya=config.normalise_ya,
         )
         self.segmenter = ArabicSegmenter()
         self.surface_tokenizer = _build_surface_tokenizer(config)
-        self.analyzer = _build_analyzer(config)
+        self.analyzer = analyzer if analyzer is not None else _build_analyzer(config)
         self._word_cache: dict = {}
         self._cache_size = word_cache_size
 
@@ -126,8 +132,15 @@ class SarfTokTokenizer:
             surface_ids = list(range(len(words_list)))
             spans = [(i, i + 1) for i in range(len(words_list))]
 
-        # Morphological analysis (cached per-word)
-        analyses_per_word = [self._analyze_word_cached(w) for w in words_list]
+        # Sentence-level API lets contextual analyzers condition probabilities on
+        # the complete input. The cache remains available for explicit word-wise
+        # ablations because contextual posteriors must never be cached by word.
+        if self.config.contextual_analysis:
+            analyses_per_word = self.analyzer.analyze_sentence(
+                words_list, context=normalised
+            )
+        else:
+            analyses_per_word = [self._analyze_word_cached(w) for w in words_list]
 
         # Build surface piece strings
         if self.surface_tokenizer is not None:

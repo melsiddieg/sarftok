@@ -17,7 +17,8 @@ built against a base HuggingFace *fast* tokenizer:
 2. Encode with ``is_split_into_words=True`` and read ``word_ids()`` to map every base token
    back to its word — giving a **contiguous** ``(start, end)`` span per word, the invariant
    :class:`~sarftok.probabilistic_embedder.ProbabilisticEmbedder` relies on.
-3. Run the configured SarfTok analyzer on each (normalised) word.
+3. Run the configured SarfTok analyzer through its sentence-level API so a
+   contextual backend can condition candidate probabilities on the full input.
 
 The base model's real embedding table then handles ``input_ids`` and morphology is added on
 top — IDs and embeddings stay consistent.
@@ -89,6 +90,9 @@ class SarfTokBaseAdapter:
         language-model text is never altered.
     word_cache_size:
         Max cached word→analyses entries (LRU-ish; 0 disables).
+    analyzer:
+        Optional analyzer instance. Inject a context-capable analyzer or CAMeL
+        disambiguator wrapper here; otherwise the configured backend is built.
     """
 
     def __init__(
@@ -98,6 +102,7 @@ class SarfTokBaseAdapter:
         *,
         normalize_for_analysis: bool = True,
         word_cache_size: int = 50_000,
+        analyzer=None,
     ) -> None:
         if not getattr(base_tokenizer, "is_fast", False):
             raise ValueError(
@@ -107,9 +112,12 @@ class SarfTokBaseAdapter:
         self.base_tok = base_tokenizer
         self.config = config
         self.normalizer = ArabicNormalizer(
-            mode=config.norm_mode, strip_diacritics=config.strip_diacritics
+            mode=config.norm_mode,
+            strip_diacritics=config.strip_diacritics,
+            normalise_alef=config.normalise_alef,
+            normalise_ya=config.normalise_ya,
         )
-        self.analyzer = _build_analyzer(config)
+        self.analyzer = analyzer if analyzer is not None else _build_analyzer(config)
         self.normalize_for_analysis = normalize_for_analysis
         self._cache: dict = {}
         self._cache_size = word_cache_size
@@ -171,8 +179,20 @@ class SarfTokBaseAdapter:
         attention_mask = enc.get("attention_mask", [1] * len(input_ids))
         spans = _spans_from_word_ids(enc.word_ids(), len(words))
 
+        if self.config.contextual_analysis:
+            analysis_words = [
+                self.normalizer.normalise(w) if self.normalize_for_analysis else w
+                for w in words
+            ]
+            analyses = self.analyzer.analyze_sentence(
+                analysis_words,
+                context=" ".join(analysis_words),
+            )
+        else:
+            analyses = [self._analyze(w) for w in words]
         morph_analyses = [
-            [analysis_to_dict(a) for a in self._analyze(w)] for w in words
+            [analysis_to_dict(a) for a in word_analyses]
+            for word_analyses in analyses
         ]
 
         return {

@@ -81,3 +81,22 @@ class TestOOVFallback:
         )
         out = encoder.forward_word([a])
         assert out.shape == (64,)
+
+
+class TestRichMorphology:
+    def test_case_changes_embedding(self, encoder):
+        nominative = MorphAnalysis(
+            prob=1.0, root="ktb", pattern="CaCaCa", pos="noun", case="n"
+        )
+        accusative = MorphAnalysis(
+            prob=1.0, root="ktb", pattern="CaCaCa", pos="noun", case="a"
+        )
+        assert not torch.allclose(
+            encoder.forward_word([nominative]),
+            encoder.forward_word([accusative]),
+        )
+
+    def test_root_pattern_interaction_receives_gradient(self, encoder):
+        analysis = MorphAnalysis(prob=1.0, root="ktb", pattern="CaCaCa")
+        encoder.forward_word([analysis]).sum().backward()
+        assert encoder.interaction_projection.weight.grad is not None

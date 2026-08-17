@@ -1,6 +1,6 @@
 # SarfTok — Hybrid Probabilistic Arabic Tokenizer
 
-**SarfTok** combines a surface subword channel with a probabilistic morphology channel to produce factorized additive word embeddings for Arabic LLM pretraining.
+**SarfTok** combines a surface subword channel with a probabilistic morphology channel to produce factorized word embeddings for Arabic LLM pretraining and continued pretraining of existing models.
 
 ## Architecture
 
@@ -18,14 +18,16 @@ SurfaceTokenizer                    MorphAnalyzer
     │  word → surface span mapping         │  top-k MorphAnalysis[]
     │                                      ▼
     │                              MorphEncoder (nn.Module)
-    │                              E_i = E_root + E_pat + E_pro + E_enc
+    │                              E_rp = MLP(E_root, E_pat, E_root ⊙ E_pat)
+    │                              E_i = E_rp + E_POS + E_case + E_mood + …
+    │                                    + E_pro + E_enc
     │                              E_morph = Σ p_i · E_i
     │                                      │
     └──────────────┬───────────────────────┘
                    ▼
          ProbabilisticEmbedder
          α_word = α₀ · exp(-β·H(p))   ← entropy-aware gate
-         surface_emb[s:e] += α · E_morph[j]
+         surface_emb[s:e] += α / √n_pieces · E_morph[j]
                    │
                    ▼
          HybridSarfTokCausalLM
@@ -43,7 +45,8 @@ pip install -e ".[camel]"
 
 # Tokenize a sentence
 python -c "
-from sarftok import SarfTokTokenizer, SarfTokConfig
+from sarftok.config import SarfTokConfig
+from sarftok.tokenizer_api import SarfTokTokenizer
 cfg = SarfTokConfig(analyzer_backend='heuristic')
 tok = SarfTokTokenizer(cfg)
 result = tok.tokenize_sentence('كَتَبَ الطَّالِبُ الدَّرْسَ')
@@ -64,18 +67,22 @@ sarftok-preprocess --input data/corpus.txt --output data/shards/ --analyzer heur
 ## Configuration
 
 ```python
-from sarftok import SarfTokConfig
+from sarftok.config import SarfTokConfig
 
 cfg = SarfTokConfig(
     # normalization
     norm_mode="classical_strict",
     strip_diacritics=False,
+    normalise_alef=False,           # preserve Classical orthography
+    normalise_ya=False,
     # surface tokenizer
     surface_vocab_size=32000,
     surface_model_type="bpe",
     surface_model_path="models/surface/spm.model",
     # morphology
     analyzer_backend="heuristic",   # "heuristic" | "camel" | "distilled"
+    camel_db="calima-clx-r13",      # Classical Arabic, not the MSA database
+    contextual_analysis=True,       # use sentence-level analyzer API
     top_k=3,
     confidence_threshold=0.05,
     morph_vocab_path="models/morph_vocab.json",
@@ -87,9 +94,13 @@ cfg = SarfTokConfig(
     learnable_alpha=False,
     entropy_gating=True,
     entropy_normalize=True,         # normalise H by ln(k) so β is stable across top_k
+    broadcast_piece_scaling="sqrt", # "none" | "sqrt" | "linear"
+    root_pattern_interaction=True,
+    fusion_layer_norm=False,        # opt-in for checkpoint compatibility
     # training losses
-    ortho_lambda=0.01,
+    ortho_lambda=0.0,                # optional ablation, disabled by default
     ortho_min_confidence=0.5,
+    template_lambda=0.0,            # enable when supplying template_pairs
 )
 ```
 
@@ -101,6 +112,13 @@ Analyzer backends declare how their per-analysis scores should be interpreted:
   **L1-normalised**, preserving a backend's stated confidences (e.g. `0.7 / 0.3`).
 - `score_type="logit"` — scores are logits and are converted with a temperature softmax.
 
+CAMeL analyzer order is not treated as a posterior. If an analysis has no count/frequency,
+its candidates receive uniform weights so entropy gating correctly weakens the morphology
+channel. For contextual probabilities, inject a CAMeL-compatible disambiguator into
+`CamelMorphAnalyzer(contextual_disambiguator=...)` and pass that analyzer to
+`SarfTokTokenizer(..., analyzer=analyzer)` or `SarfTokBaseAdapter(..., analyzer=analyzer)`.
+The disambiguator is called once per sentence and its candidate scores are preserved.
+
 ## Fine-tuning an existing LLM
 
 Beyond from-scratch pretraining on the surface vocabulary, SarfTok can morph-fuse an
@@ -110,7 +128,7 @@ consistent while the morphology embedding is added on top — no transformer wei
 
 ```python
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from sarftok import SarfTokConfig
+from sarftok.config import SarfTokConfig
 from sarftok.llm_integration.base_tokenizer_adapter import SarfTokBaseAdapter
 from sarftok.llm_integration.hf_data_collator import SarfTokDataCollator
 from sarftok.llm_integration.hf_modeling_embeddings import HybridSarfTokCausalLM
